@@ -72,8 +72,12 @@ interface Chunk {
 
 interface LaidPage {
   chunks: Chunk[];
-  /** Printed folio numbers that begin on this page. */
-  folios: number[];
+  /**
+   * Where each scanned folio starts on this page. Rendered as a small number
+   * in the outer margin, so a passage can be traced back to the scan without
+   * the folio interfering with the PDF's own page numbering.
+   */
+  folios: { folio: number; y: number }[];
 }
 
 /**
@@ -133,7 +137,7 @@ class Layout {
   noteFolio(folio: number): void {
     if (this.seenFolios.has(folio)) return;
     this.seenFolios.add(folio);
-    this.page.folios.push(folio);
+    this.page.folios.push({ folio, y: this.y });
   }
 
   /** Where the next block will land — used to record heading destinations. */
@@ -499,16 +503,18 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
       thickness: 0.5,
       color: RULE,
     });
-    const folio = laid.folios.length
-      ? `דף ${laid.folios[0]}${laid.folios.length > 1 ? `–${laid.folios[laid.folios.length - 1]}` : ''}`
-      : '';
-    if (folio) {
-      line(page, folio, {
-        y: PAGE_H - 52,
-        size: 8.5,
-        colour: GREY,
-        align: 'right',
-        fontKeys: pageKeys,
+    // Scan folios sit in the outer margin beside the line they begin on. The
+    // running head stays clean and the page's own number is the only number a
+    // reader has to track.
+    for (const mark of laid.folios) {
+      const label = String(mark.folio);
+      const width = regular.widthOfTextAtSize(label, 7.5);
+      page.drawText(label, {
+        x: MARGIN_X - 14 - width,
+        y: Math.min(Math.max(mark.y, MARGIN_BOTTOM), CONTENT_TOP),
+        size: 7.5,
+        font: regular,
+        color: GREY,
       });
     }
     const number = String(firstBodyPage + index + 1);
