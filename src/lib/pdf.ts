@@ -1,14 +1,5 @@
 import fontkit from '@pdf-lib/fontkit';
-import bidiFactory from 'bidi-js';
 import {
-  beginText,
-  endText,
-  moveText,
-  setFillingRgbColor,
-  setFontAndSize,
-  popGraphicsState,
-  pushGraphicsState,
-  PDFArray,
   PDFDocument,
   PDFHexString,
   PDFName,
@@ -23,8 +14,6 @@ import {
 } from 'pdf-lib';
 import { shouldIncludeToc, tocEntries, type TocEntry } from './toc';
 import type { Book, BookDoc, Span } from './types';
-
-const bidi = bidiFactory();
 
 export interface PdfFonts {
   regular: Uint8Array;
@@ -54,20 +43,19 @@ const GREY = rgb(0.58, 0.55, 0.5);
 const RULE = rgb(0.82, 0.79, 0.73);
 
 /**
- * One laid-out line.
+ * One laid-out line, holding its text in logical order.
  *
- * `chars` is in LOGICAL order — the order a person reads — while `xs` holds the
- * display position each character was assigned. Emitting the glyphs logically
- * and jumping to their positions is what lets copy and search work; see
- * `drawPositionedText`.
+ * See the note on direction below for why it is not pre-reordered.
  */
 interface Chunk {
-  chars: string[];
-  xs: number[];
+  text: string;
+  x: number;
   y: number;
   bold: boolean;
   size: number;
   grey?: boolean;
+  /** Extra width added to each space, for justification (PDF `Tw`). */
+  wordSpacing?: number;
 }
 
 interface LaidPage {
@@ -80,18 +68,18 @@ interface LaidPage {
   folios: { folio: number; y: number }[];
 }
 
-/**
- * Display form of a string, via the library's own Unicode Bidi Algorithm.
- *
- * This is the ONLY place direction is handled. Hebrew needs no contextual
- * shaping (its letters do not join), so correct output is purely a matter of
- * reordering — and reordering is exactly what bidi-js does. Splitting the
- * result on spaces yields the words already in left-to-right display order,
- * each with its glyphs in display order, which is all the renderer needs.
- */
-export function visualString(text: string): string {
-  return bidi.getReorderedString(text, bidi.getEmbeddingLevels(text, 'rtl'));
-}
+// NOTE ON DIRECTION — read before "fixing" anything here.
+//
+// Text is passed to pdf-lib in LOGICAL order and nothing reorders it first.
+// @pdf-lib/fontkit runs the Unicode Bidi Algorithm inside its own layout step,
+// so it emits the glyphs in visual order and stores them that way — which is
+// exactly what Word does, and what Foxit, Acrobat and the rest expect when they
+// re-apply bidi for copy and search.
+//
+// Reordering the string ourselves first (with bidi-js, say) reverses it twice:
+// the page still looks right, but the stored text comes out logical and search
+// silently breaks in mainstream readers. That bug cost a lot of time; do not
+// reintroduce it.
 
 function textOf(spans: Span[]): string {
   return spans
@@ -202,44 +190,24 @@ class Layout {
     const { size, bold } = opts;
     if (!logical.trim()) return;
 
-    // Reordering, mirroring: the library, once. Never by hand.
-    const levels = bidi.getEmbeddingLevels(logical, 'rtl');
-    const order = bidi.getReorderedIndices(logical, levels);
-    const mirrored = bidi.getMirroredCharactersMap(logical, levels);
-
-    const glyphAt = (src: number) => mirrored.get(src) ?? logical[src];
-    const displayWidths = order.map((src) => this.width(glyphAt(src), bold, size));
-    const natural = displayWidths.reduce((a, b) => a + b, 0);
-
+    const width = this.width(logical, bold, size);
     const boxWidth = CONTENT_W - opts.indent;
-    const spaces = order.filter((src) => logical[src] === ' ').length;
+    const gaps = (logical.match(/ /g) ?? []).length;
 
-    let extraPerSpace = 0;
     let x: number;
-    if (opts.justify && spaces > 0 && natural < boxWidth) {
-      extraPerSpace = (boxWidth - natural) / spaces;
+    let wordSpacing = 0;
+    if (opts.justify && gaps > 0 && width < boxWidth) {
+      // Tw widens every space in the run, so justification needs no extra
+      // draw calls and the glyph advances stay natural — as Word's do.
+      wordSpacing = (boxWidth - width) / gaps;
       x = MARGIN_X;
     } else if (opts.centre) {
-      x = MARGIN_X + (CONTENT_W - natural) / 2;
+      x = MARGIN_X + (CONTENT_W - width) / 2;
     } else {
-      x = PAGE_W - MARGIN_X - opts.indent - natural;
+      x = PAGE_W - MARGIN_X - opts.indent - width;
     }
 
-    // Walk the line in display order to assign positions, then record them
-    // against the logical index each glyph came from.
-    const xs = new Array<number>(logical.length);
-    order.forEach((src, k) => {
-      xs[src] = x;
-      x += displayWidths[k] + (logical[src] === ' ' ? extraPerSpace : 0);
-    });
-
-    this.page.chunks.push({
-      chars: Array.from(logical, (_, i) => glyphAt(i)),
-      xs,
-      y: this.y,
-      bold,
-      size,
-    });
+    this.page.chunks.push({ text: logical, x, y: this.y, bold, size, wordSpacing });
   }
 
   space(height: number): void {
@@ -289,102 +257,35 @@ function layoutBody(
   return { pages: engine.pages, targets };
 }
 
-/**
- * Emit one line's glyphs in LOGICAL order, each jumped to its display position.
- *
- * A PDF show-text operation always advances left to right, so writing a Hebrew
- * line as ordinary text forces a choice: visual order (correct on screen,
- * reversed when copied) or logical order (readable when copied, mirrored on
- * screen). A `TJ` array escapes it — between glyphs you may insert a numeric
- * offset that moves the pen anywhere, including backwards. So the glyphs are
- * listed in reading order while landing right-to-left on the page, and copy,
- * search and screen readers all get real Hebrew.
- */
-function drawPositionedText(
-  page: PDFPage,
-  chunk: Chunk,
-  font: PDFFont,
-  fontKey: PDFName,
-  colour: { red: number; green: number; blue: number },
-  context: PDFDocument['context'],
-): void {
-  const { chars, xs, size } = chunk;
-  if (chars.length === 0) return;
-
-  const elements: (PDFHexString | PDFNumber)[] = [];
-  for (let i = 0; i < chars.length; i++) {
-    elements.push(font.encodeText(chars[i]));
-    const next = xs[i + 1];
-    if (next === undefined) break;
-    const penAfter = xs[i] + font.widthOfTextAtSize(chars[i], size);
-    // TJ offsets are thousandths of text space, subtracted from the advance.
-    const shift = ((penAfter - next) * 1000) / size;
-    if (Math.abs(shift) > 0.001) elements.push(PDFNumber.of(shift));
-  }
-
-  const array = PDFArray.withContext(context);
-  for (const element of elements) array.push(element);
-
-  page.pushOperators(
-    pushGraphicsState(),
-    beginText(),
-    setFillingRgbColor(colour.red, colour.green, colour.blue),
-    setFontAndSize(fontKey, size),
-    moveText(xs[0], chunk.y),
-    PDFOperator.of(PDFOperatorNames.ShowTextAdjusted, [array]),
-    endText(),
-    popGraphicsState(),
-  );
-}
-
-
-/** Lay out one single-style line and emit it in logical order. */
-function drawLogicalLine(
+/** Draw one single-style line, right-aligned or centred, in display order. */
+function drawLine(
   page: PDFPage,
   text: string,
   opts: {
     y: number;
     size: number;
     font: PDFFont;
-    fontKey: PDFName;
-    context: PDFDocument['context'];
     align?: 'centre' | 'right' | 'left';
     left?: number;
-    colour?: { red: number; green: number; blue: number };
+    colour?: ReturnType<typeof rgb>;
   },
 ): void {
   if (!text.trim()) return;
-  const { size, font } = opts;
-
-  const levels = bidi.getEmbeddingLevels(text, 'rtl');
-  const order = bidi.getReorderedIndices(text, levels);
-  const mirrored = bidi.getMirroredCharactersMap(text, levels);
-  const glyphAt = (src: number) => mirrored.get(src) ?? text[src];
-
-  const widths = order.map((src) => font.widthOfTextAtSize(glyphAt(src), size));
-  const total = widths.reduce((a, b) => a + b, 0);
-
-  let x =
+  const width = opts.font.widthOfTextAtSize(text, opts.size);
+  const x =
     opts.align === 'right'
-      ? PAGE_W - MARGIN_X - total
+      ? PAGE_W - MARGIN_X - width
       : opts.align === 'left'
         ? (opts.left ?? MARGIN_X)
-        : MARGIN_X + (CONTENT_W - total) / 2;
+        : MARGIN_X + (CONTENT_W - width) / 2;
 
-  const xs = new Array<number>(text.length);
-  order.forEach((src, k) => {
-    xs[src] = x;
-    x += widths[k];
+  page.drawText(text, {
+    x,
+    y: opts.y,
+    size: opts.size,
+    font: opts.font,
+    color: opts.colour ?? INK,
   });
-
-  drawPositionedText(
-    page,
-    { chars: Array.from(text, (_, i) => glyphAt(i)), xs, y: opts.y, bold: false, size },
-    font,
-    opts.fontKey,
-    opts.colour ?? INK,
-    opts.context,
-  );
 }
 
 export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promise<Uint8Array> {
@@ -408,11 +309,6 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
 
   // ---- title page ----
   const title = pdf.addPage([PAGE_W, PAGE_H]);
-  const keys = (page: PDFPage) => ({
-    regular: page.node.newFontDictionary('F1', regular.ref),
-    bold: page.node.newFontDictionary('F2', bold.ref),
-  });
-  const titleKeys = keys(title);
   const line = (
     page: PDFPage,
     text: string,
@@ -422,29 +318,26 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
       bold?: boolean;
       align?: 'centre' | 'right' | 'left';
       left?: number;
-      colour?: { red: number; green: number; blue: number };
-      fontKeys: { regular: PDFName; bold: PDFName };
+      colour?: ReturnType<typeof rgb>;
     },
   ) =>
-    drawLogicalLine(page, text, {
+    drawLine(page, text, {
       y: o.y,
       size: o.size,
       font: o.bold ? bold : regular,
-      fontKey: o.bold ? o.fontKeys.bold : o.fontKeys.regular,
-      context: pdf.context,
       align: o.align,
       left: o.left,
       colour: o.colour,
     });
   let ty = PAGE_H - 210;
-  line(title, book.title, { y: ty, size: 26, bold: true, fontKeys: titleKeys });
+  line(title, book.title, { y: ty, size: 26, bold: true });
   ty -= 34;
   if (book.author) {
-    line(title, book.author, { y: ty, size: 13, fontKeys: titleKeys });
+    line(title, book.author, { y: ty, size: 13 });
     ty -= 22;
   }
   if (book.place && book.year) {
-    line(title, `${book.place} ${book.year}`, { y: ty, size: 11, colour: GREY, fontKeys: titleKeys });
+    line(title, `${book.place} ${book.year}`, { y: ty, size: 11, colour: GREY });
     ty -= 20;
   }
 
@@ -464,7 +357,7 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
     'רישיון: Creative Commons BY-SA 4.0',
   ];
   for (const footLine of footLines) {
-    line(title, footLine, { y: fy, size: 9, colour: GREY, fontKeys: titleKeys });
+    line(title, footLine, { y: fy, size: 9, colour: GREY });
     fy -= 15;
   }
 
@@ -483,20 +376,27 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
   const bodyPages = body.pages.map(() => pdf.addPage([PAGE_W, PAGE_H]));
   body.pages.forEach((laid, index) => {
     const page = bodyPages[index];
-    const pageKeys = keys(page);
     for (const c of laid.chunks) {
-      drawPositionedText(
-        page,
-        c,
-        c.bold ? bold : regular,
-        c.bold ? pageKeys.bold : pageKeys.regular,
-        c.grey ? GREY : INK,
-        pdf.context,
-      );
+      if (c.wordSpacing) {
+        page.pushOperators(
+          PDFOperator.of(PDFOperatorNames.SetWordSpacing, [PDFNumber.of(c.wordSpacing)]),
+        );
+      }
+      page.drawText(c.text, {
+        x: c.x,
+        y: c.y,
+        size: c.size,
+        font: c.bold ? bold : regular,
+        color: c.grey ? GREY : INK,
+      });
+      // Word spacing is text state, so it persists until cleared.
+      if (c.wordSpacing) {
+        page.pushOperators(PDFOperator.of(PDFOperatorNames.SetWordSpacing, [PDFNumber.of(0)]));
+      }
     }
 
     // Running head and folio, so a passage can be cited from the printout.
-    line(page, book.title, { y: PAGE_H - 52, size: 8.5, colour: GREY, fontKeys: pageKeys });
+    line(page, book.title, { y: PAGE_H - 52, size: 8.5, colour: GREY });
     page.drawLine({
       start: { x: MARGIN_X, y: PAGE_H - 60 },
       end: { x: PAGE_W - MARGIN_X, y: PAGE_H - 60 },
@@ -538,7 +438,7 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
       const pageNumber = target ? firstBodyPage + target.page + 1 : 0;
 
       const labelWidth = regular.widthOfTextAtSize(entry.text, 10.5);
-      line(page, entry.text, { y, size: 10.5, align: 'right', fontKeys: keys(page) });
+      line(page, entry.text, { y, size: 10.5, align: 'right' });
 
       const num = String(pageNumber);
       const numWidth = regular.widthOfTextAtSize(num, 9.5);
@@ -571,7 +471,6 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
         y: CONTENT_TOP,
         size: 15,
         bold: true,
-        fontKeys: keys(page),
       });
       const number = String(i + 2);
       page.drawText(number, {
