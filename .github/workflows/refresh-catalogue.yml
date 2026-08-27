@@ -1,0 +1,32 @@
+name: Refresh catalogue
+
+# Dicta adds books over time; this re-pulls books.json weekly and commits it
+# only when it actually changed.
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/fetch-books.mjs
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- public/books.json; then
+            echo "Catalogue unchanged."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/books.json
+          git commit -m "chore: refresh Dicta catalogue"
+          git push
