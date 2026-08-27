@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
+import {
+  decodePDFRawStream,
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRawStream,
+} from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, sampleArchive } from '../test/fixtures';
 import { pagesFromZip } from './fetchBook';
@@ -99,5 +107,30 @@ describe('PDF output', () => {
     };
     const out = await buildPdf(alfeiMenashe, bare, fonts);
     expect(new TextDecoder('latin1').decode(out.slice(0, 5))).toBe('%PDF-');
+  });
+});
+
+describe('text layer', () => {
+  it('positions glyphs with TJ offsets rather than plain show-text', async () => {
+    // This is what makes logical order possible: glyphs are listed in reading
+    // order and moved into place by numeric offsets between them. Without it
+    // the page still looks right but searching Hebrew inside the PDF fails.
+    const reloaded = await PDFDocument.load(bytes);
+
+    const ops = reloaded.context
+      .enumerateIndirectObjects()
+      .flatMap(([, obj]) => (obj instanceof PDFRawStream ? [obj] : []))
+      .map((stream) => {
+        try {
+          return new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode());
+        } catch {
+          return ''; // font files and other binary streams
+        }
+      })
+      .join('\n');
+
+    expect(ops).toContain('TJ');
+    // Negative offsets are the backwards jumps that lay Hebrew right-to-left.
+    expect(/-\d/.test(ops)).toBe(true);
   });
 });

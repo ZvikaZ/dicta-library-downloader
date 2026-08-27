@@ -531,15 +531,8 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
       const target = body.targets.get(entry.id);
       const pageNumber = target ? firstBodyPage + target.page + 1 : 0;
 
-      const label = visualString(entry.text);
-      const labelWidth = regular.widthOfTextAtSize(label, 10.5);
-      page.drawText(label, {
-        x: PAGE_W - MARGIN_X - labelWidth,
-        y,
-        size: 10.5,
-        font: regular,
-        color: INK,
-      });
+      const labelWidth = regular.widthOfTextAtSize(entry.text, 10.5);
+      line(page, entry.text, { y, size: 10.5, align: 'right', fontKeys: keys(page) });
 
       const num = String(pageNumber);
       const numWidth = regular.widthOfTextAtSize(num, 9.5);
