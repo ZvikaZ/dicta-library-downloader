@@ -1,11 +1,15 @@
 import {
   AlignmentType,
   Document,
+  Footer,
+  Header,
   HeadingLevel,
+  LineRuleType,
+  PageBreak,
+  PageNumber,
   Packer,
   Paragraph,
   TextRun,
-  PageBreak,
 } from 'docx';
 import { shouldIncludeToc, tocEntries } from './toc';
 import type { Book, BookDoc, Span } from './types';
@@ -17,20 +21,34 @@ const CC_BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
 // FrankRuehl ships with Windows, which is where these files will mostly open.
 const FONT = { ascii: 'FrankRuehl', hAnsi: 'FrankRuehl', cs: 'FrankRuehl' } as const;
 
+const INK = '000000';
+const GREY = '808080';
+
+// Half-points.
+const BODY_SIZE = 23;
+const HEAD_SIZE = 26;
+const SMALL_SIZE = 18;
+
 // Every paragraph needs `bidirectional`, otherwise Word lays the text out
 // left-to-right and strands the punctuation on the wrong side of the line.
 function rtl(
   content: string | Span[],
-  opts: { heading?: boolean; small?: boolean } = {},
+  opts: { heading?: boolean; small?: boolean; indent?: boolean } = {},
 ): Paragraph {
   const spans: Span[] = typeof content === 'string' ? [{ text: content, bold: false }] : content;
-  const size = opts.small ? 18 : 24; // half-points
+  const size = opts.heading ? HEAD_SIZE : opts.small ? SMALL_SIZE : BODY_SIZE;
 
   return new Paragraph({
     bidirectional: true,
     alignment: opts.heading ? AlignmentType.CENTER : AlignmentType.JUSTIFIED,
+    // The style carries the look; the outline level only feeds Word's
+    // navigation pane and the generated bookmarks.
     heading: opts.heading ? HeadingLevel.HEADING_2 : undefined,
-    spacing: opts.heading ? { before: 320, after: 160 } : { after: 120 },
+    style: opts.heading ? 'SectionHeading' : undefined,
+    spacing: opts.heading
+      ? { before: 320, after: 140, line: 280, lineRule: LineRuleType.AUTO }
+      : { after: 0, line: 320, lineRule: LineRuleType.AUTO },
+    indent: opts.indent ? { firstLine: 340 } : undefined,
     children: spans.map(
       (s, i) =>
         new TextRun({
@@ -39,6 +57,7 @@ function rtl(
           rightToLeft: true,
           font: FONT,
           size,
+          color: INK,
           bold: opts.heading || s.bold,
         }),
     ),
@@ -50,15 +69,34 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
     new Paragraph({
       bidirectional: true,
       alignment: AlignmentType.CENTER,
-      heading: HeadingLevel.TITLE,
-      spacing: { after: 240 },
+      spacing: { before: 2400, after: 360 },
       children: [
-        new TextRun({ text: book.title, rightToLeft: true, font: FONT, size: 40, bold: true }),
+        new TextRun({
+          text: book.title,
+          rightToLeft: true,
+          font: FONT,
+          size: 44,
+          bold: true,
+          color: INK,
+        }),
       ],
     }),
   ];
-  if (book.author) front.push(rtl(book.author, { heading: true }));
-  if (book.place && book.year) front.push(rtl(`${book.place} ${book.year}`, { small: true }));
+  if (book.author) {
+    front.push(
+      new Paragraph({
+        bidirectional: true,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+        children: [
+          new TextRun({ text: book.author, rightToLeft: true, font: FONT, size: 26, color: INK }),
+        ],
+      }),
+    );
+  }
+  if (book.place && book.year) {
+    front.push(rtl(`${book.place} ${book.year}`, { small: true }));
+  }
   front.push(
     rtl(`${book.category} · ${book.subcategory} · ${doc.pageCount} עמודים`, { small: true }),
     rtl('הטקסט הופק בסריקה ובזיהוי אוטומטי (OCR) וייתכנו בו שיבושים. ללא ניקוד.', { small: true }),
@@ -83,10 +121,16 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
         new Paragraph({
           bidirectional: true,
           alignment: AlignmentType.START,
-          spacing: { after: 60 },
+          spacing: { after: 40 },
           children: [
-            new TextRun({ text: e.text, rightToLeft: true, font: FONT, size: 22 }),
-            new TextRun({ text: `  ${e.page}`, rightToLeft: true, font: FONT, size: 18 }),
+            new TextRun({ text: e.text, rightToLeft: true, font: FONT, size: 21, color: INK }),
+            new TextRun({
+              text: `  ${e.page}`,
+              rightToLeft: true,
+              font: FONT,
+              size: SMALL_SIZE,
+              color: GREY,
+            }),
           ],
         }),
       );
@@ -94,16 +138,79 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
     contents.push(new Paragraph({ children: [new PageBreak()] }));
   }
 
-  const body = doc.blocks.map((b) => rtl(b.spans, { heading: b.kind === 'heading' }));
+  const body = doc.blocks.map((b) =>
+    rtl(b.spans, { heading: b.kind === 'heading', indent: b.kind === 'para' }),
+  );
 
   const document = new Document({
     creator: book.author ?? 'Dicta',
     title: book.title,
     description: `${book.category} · ${book.subcategory}`,
-    // `bidirectional` is not a document-level style property; every paragraph
-    // sets it individually in `rtl()` above.
-    styles: { default: { document: { run: { font: FONT, size: 24 } } } },
-    sections: [{ properties: {}, children: [...front, ...contents, ...body] }],
+    styles: {
+      default: {
+        document: { run: { font: FONT, size: BODY_SIZE, color: INK } },
+      },
+      // Word's built-in Heading styles are blue Calibri Light — utterly wrong
+      // for a Torah text. Overriding the style (rather than avoiding headings)
+      // keeps the outline level, so Word's navigation pane still works.
+      paragraphStyles: [
+        {
+          id: 'SectionHeading',
+          name: 'Section Heading',
+          basedOn: 'Normal',
+          next: 'Normal',
+          quickFormat: true,
+          run: { font: FONT, size: HEAD_SIZE, bold: true, color: INK, rightToLeft: true },
+          paragraph: { alignment: AlignmentType.CENTER, spacing: { before: 320, after: 140 } },
+        },
+      ],
+    },
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: { top: 1200, bottom: 1100, left: 1250, right: 1250 },
+          },
+        },
+        headers: {
+          default: new Header({
+            children: [
+              new Paragraph({
+                bidirectional: true,
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    text: book.title,
+                    rightToLeft: true,
+                    font: FONT,
+                    size: 17,
+                    color: GREY,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    children: [PageNumber.CURRENT],
+                    font: FONT,
+                    size: SMALL_SIZE,
+                    color: GREY,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children: [...front, ...contents, ...body],
+      },
+    ],
   });
 
   // Neither Packer.toBuffer (needs Node's Buffer, which Vite does not polyfill)

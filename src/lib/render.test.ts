@@ -354,3 +354,38 @@ describe('table of contents', () => {
     expect(xml).toContain('ענין הטבעים ב');
   });
 });
+
+describe('DOCX presentation', () => {
+  const built = buildDocx(alfeiMenashe, doc);
+
+  it('sets headings in black serif, not the blue Word heading style', async () => {
+    const zip = await JSZip.loadAsync(await built);
+    const styles = await zip.file('word/styles.xml')!.async('string');
+    expect(styles).toContain('SectionHeading');
+    // Word's stock heading blues would make this read like an office memo.
+    for (const blue of ['2F5496', '4472C4', '365F91', '1F4E79']) {
+      expect(styles).not.toContain(blue);
+    }
+    const heading = /w:styleId="SectionHeading"[\s\S]*?<\/w:style>/.exec(styles);
+    expect(heading).not.toBeNull();
+    expect(heading![0]).toContain('FrankRuehl');
+    expect(heading![0]).toContain('w:val="000000"');
+  });
+
+  it('gives the document a running head and page numbers', async () => {
+    const zip = await JSZip.loadAsync(await built);
+    const header = await zip.file('word/header1.xml')!.async('string');
+    const footer = await zip.file('word/footer1.xml')!.async('string');
+    expect(header).toContain(alfeiMenashe.title);
+    // A PAGE field, so Word numbers the pages itself.
+    expect(footer).toContain('PAGE');
+    expect(footer).toContain('fldChar');
+  });
+
+  it('indents paragraphs and justifies them like a printed book', async () => {
+    const zip = await JSZip.loadAsync(await built);
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml).toContain('w:firstLine');
+    expect(xml).toContain('w:val="both"');
+  });
+});

@@ -18,7 +18,8 @@ export async function loadLib() {
 export { pagesFromZip } from './src/lib/fetchBook';
 export { buildEpub, chapterise } from './src/lib/epub';
 export { buildDocx } from './src/lib/docx';
-export { buildPdf } from './src/lib/pdf';`,
+export { buildPdf } from './src/lib/pdf';
+export { downloadName } from './src/lib/filename';`,
       resolveDir: process.cwd(),
       sourcefile: 'lib-entry.ts',
       loader: 'ts',
@@ -39,7 +40,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const book = books.find((b) => b.id === bookId);
   if (!book) throw new Error(`No book with id "${bookId}"`);
 
-  const { buildDoc, pagesFromZip, buildEpub, buildPdf } = await loadLib();
+  const { buildDoc, pagesFromZip, buildEpub, buildPdf, buildDocx, downloadName } = await loadLib();
 
   process.stdout.write(`${book.title} — downloading… `);
   const res = await fetch(book.ocrUrl);
@@ -56,16 +57,20 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   });
 
   await mkdir(outDir, { recursive: true });
-  const out = join(outDir, `${book.id}.epub`);
+  const out = join(outDir, downloadName(book, 'epub'));
   await writeFile(out, epub);
-  const pdfOut = join(outDir, `${book.id}.pdf`);
+  const pdfOut = join(outDir, downloadName(book, 'pdf'));
   await writeFile(pdfOut, pdf);
+  const docxOut = join(outDir, downloadName(book, 'docx'));
+  await writeFile(docxOut, await buildDocx(book, doc));
 
   const headings = doc.blocks.filter((b) => b.kind === 'heading').length;
   console.log(
     `pages ${doc.pageCount} · blocks ${doc.blocks.length} (${headings} headings) · ` +
       `fidelity ${doc.fidelity} · epub ${(epub.length / 1e6).toFixed(2)} MB → ${out}
 ` +
-      `pdf ${(pdf.length / 1e6).toFixed(2)} MB → ${pdfOut}`,
+      `pdf ${(pdf.length / 1e6).toFixed(2)} MB → ${pdfOut}
+` +
+      `docx → ${docxOut}`,
   );
 }

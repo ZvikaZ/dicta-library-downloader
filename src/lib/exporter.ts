@@ -1,6 +1,7 @@
 import regularFontUrl from '../assets/fonts/FrankRuhlLibre-Regular.ttf?url';
 import boldFontUrl from '../assets/fonts/FrankRuhlLibre-Bold.ttf?url';
 import { buildDocx } from './docx';
+import { downloadName } from './filename';
 import { buildEpub } from './epub';
 import { loadBook, type Progress } from './fetchBook';
 import { buildPdf, type PdfFonts } from './pdf';
@@ -58,16 +59,16 @@ export async function exportBook(
   const doc = await getDoc(book, onProgress);
 
   if (format === 'pdf') {
-    saveBytes(await buildPdf(book, doc, await pdfFonts()), `${book.id}.pdf`, 'application/pdf');
+    saveBytes(await buildPdf(book, doc, await pdfFonts()), downloadName(book, 'pdf'), 'application/pdf');
     return;
   }
   if (format === 'epub') {
-    saveBytes(await buildEpub(book, doc), `${book.id}.epub`, 'application/epub+zip');
+    saveBytes(await buildEpub(book, doc), downloadName(book, 'epub'), 'application/epub+zip');
     return;
   }
   saveBytes(
     await buildDocx(book, doc),
-    `${book.id}.docx`,
+    downloadName(book, 'docx'),
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   );
 }
