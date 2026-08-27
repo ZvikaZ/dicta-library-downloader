@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, sampleArchive } from '../test/fixtures';
 import { pagesFromZip } from './fetchBook';
 import { buildDoc } from './parseOcr';
-import { buildPdf } from './pdf';
+import { buildPdf, isolateLtrRuns } from './pdf';
 import { tocEntries } from './toc';
 
 const doc = buildDoc(await pagesFromZip(sampleArchive()));
@@ -25,6 +25,13 @@ const loaded = await PDFDocument.load(bytes);
 const FINALS = new Set(['ך', 'ם', 'ן', 'ף', 'ץ']);
 
 describe('text direction', () => {
+  it('isolates embedded LTR runs inside RTL text', () => {
+    expect(isolateLtrRuns('וילנה 1880')).toBe('וילנה \u20661880\u2069');
+    expect(isolateLtrRuns('רישיון: Creative Commons BY-SA 4.0')).toBe(
+      'רישיון: \u2066Creative\u2069 \u2066Commons\u2069 \u2066BY-SA\u2069 \u20664.0\u2069',
+    );
+  });
+
   it('hands pdf-lib logical text and lets fontkit do the bidi', () => {
     // Guard against reintroducing a manual reordering pass: the module must
     // not depend on a bidi library at all.
@@ -103,4 +110,3 @@ describe('PDF output', () => {
     expect(new TextDecoder('latin1').decode(out.slice(0, 5))).toBe('%PDF-');
   });
 });
-

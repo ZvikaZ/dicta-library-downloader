@@ -41,6 +41,9 @@ const PARA_SPACING = 3;
 const INK = rgb(0.12, 0.1, 0.08);
 const GREY = rgb(0.58, 0.55, 0.5);
 const RULE = rgb(0.82, 0.79, 0.73);
+const LRI = '\u2066';
+const PDI = '\u2069';
+const LTR_RUN = /[A-Za-z0-9][A-Za-z0-9./:@+_%#&='’‘"“”\-]*/g;
 
 /**
  * One laid-out line, holding its text in logical order.
@@ -87,6 +90,16 @@ function textOf(spans: Span[]): string {
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Keep embedded Latin/number runs stable inside RTL lines.
+ *
+ * pdf-lib/fontkit does bidi reordering itself, but mixed runs still need an
+ * explicit directional isolate or readers may flip the run's internal order.
+ */
+export function isolateLtrRuns(text: string): string {
+  return text.replace(LTR_RUN, (run) => `${LRI}${run}${PDI}`);
 }
 
 class Layout {
@@ -271,6 +284,7 @@ function drawLine(
   },
 ): void {
   if (!text.trim()) return;
+  const display = isolateLtrRuns(text);
   const width = opts.font.widthOfTextAtSize(text, opts.size);
   const x =
     opts.align === 'right'
@@ -279,7 +293,7 @@ function drawLine(
         ? (opts.left ?? MARGIN_X)
         : MARGIN_X + (CONTENT_W - width) / 2;
 
-  page.drawText(text, {
+  page.drawText(display, {
     x,
     y: opts.y,
     size: opts.size,
@@ -377,12 +391,13 @@ export async function buildPdf(book: Book, doc: BookDoc, fonts: PdfFonts): Promi
   body.pages.forEach((laid, index) => {
     const page = bodyPages[index];
     for (const c of laid.chunks) {
+      const display = isolateLtrRuns(c.text);
       if (c.wordSpacing) {
         page.pushOperators(
           PDFOperator.of(PDFOperatorNames.SetWordSpacing, [PDFNumber.of(c.wordSpacing)]),
         );
       }
-      page.drawText(c.text, {
+      page.drawText(display, {
         x: c.x,
         y: c.y,
         size: c.size,
