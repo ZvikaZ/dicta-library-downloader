@@ -1,7 +1,9 @@
 # הספרייה של דיקטה — ממשק הורדה
 
 Browse the [Dicta Library](https://library.dicta.org.il) catalogue and download any of its
-1,007 books as **EPUB**, **Word (.docx)**, or **PDF** — entirely in the browser, with no server.
+1,007 books as **EPUB**, **Word (.docx)**, or **PDF** — generated entirely in the browser, with no
+server. Each file gets a table of contents, the printed folio numbers, and proper right-to-left
+Hebrew typesetting.
 
 > All texts are the work of **[Dicta — the Israel Center for Text Analysis](https://library.dicta.org.il)**,
 > which scans, OCRs and releases these rabbinic works to the public free of charge under
@@ -43,17 +45,32 @@ the original edition.
 
 ### Typography
 
-The EPUB **embeds** Frank Ruhl Libre (Hebrew subset, ~19 kB, SIL OFL). Merely *naming* a
-traditional face does not work: the CLM fonts are Linux-only and readers fall through to a generic
-modern serif. DOCX asks for `FrankRuehl`, which ships with Windows, in the complex-script font
-slot — the one Word actually uses for Hebrew.
+All three formats use **Frank Ruhl Libre** (Rafael Frank's 1908 face, the type most
+20th-century Torah printing used), and all three **embed** it. Merely *naming* a traditional face
+does not work: the CLM fonts are Linux-only, so readers fall through to a generic modern serif.
+
+Google Fonts ships Frank Ruhl Libre only as a variable font, and pdf-lib embeds raw bytes without
+instantiating a weight axis — so `scripts/make-pdf-fonts.py` pins wght=400 and wght=700 into static
+TTFs (committed; re-run only when upstream changes). The EPUB embeds the woff2 subset. DOCX asks
+for `FrankRuehl`, which ships with Windows, in the **complex-script** font slot — the one Word
+actually consults for Hebrew; setting only the ascii slot silently yields Calibri.
 
 ### PDF
 
-PDF is produced through the browser's own print dialogue ("Save as PDF") rather than generated.
-jsPDF and pdfmake do not shape right-to-left text, so a hand-built Hebrew PDF needs a bespoke bidi
-pass and an embedded font subset, and still mishandles mixed Hebrew/Latin runs. The browser
-already has a correct RTL text engine.
+The PDF is generated directly with pdf-lib — not through the browser's print dialogue — with a
+generated contents page, a real PDF outline (the reader's sidebar navigation), internal links from
+each contents entry to its page, running heads carrying the printed folio, and justified type.
+
+Hebrew needs **no contextual shaping** (unlike Arabic, its letters do not join), so correct output
+is purely a matter of reordering, and `bidi-js` does that. One rule keeps this honest: direction is
+handled in exactly one function, `visualString`, which calls the library and nothing else. An
+earlier hand-rolled version — manual index swaps and a "sort back" pass — produced confidently
+wrong output, so **do not reimplement the reordering.**
+
+One known limitation: PDF has no notion of direction, and a single show-text operation always
+paints left to right, so the content stream is inherently in display order. Text copied out of the
+PDF therefore comes out visually ordered rather than logically ordered. Display is correct;
+copy-paste and in-file search are not. The EPUB and DOCX have no such limitation.
 
 Exports are **un-vocalised**; `nikudMetegFileURL` is deliberately ignored.
 
@@ -62,7 +79,7 @@ Exports are **un-vocalised**; `nikudMetegFileURL` is deliberately ignored.
 ```bash
 npm install        # .npmrc sets legacy-peer-deps (npm 10.9 trips over vitest's peer set)
 npm run dev        # local dev server
-npm test           # 52 tests: parser, EPUB/DOCX output, and the UI
+npm test           # 64 tests: parser, EPUB/DOCX/PDF output, bidi, and the UI
 npm run build      # production build into dist/
 ```
 
@@ -71,7 +88,8 @@ Helper scripts:
 ```bash
 npm run fetch:books                    # re-pull and normalise the catalogue into public/
 npm run embed:font                     # regenerate the base64 font module
-npm run export:book alfeimenashe       # build one EPUB from the CLI, no browser
+npm run export:book alfeimenashe       # build EPUB + PDF from the CLI, no browser
+python scripts/make-pdf-fonts.py       # regenerate the static TTFs the PDF embeds
 ```
 
 `scripts/fetch-books.mjs` normalises the upstream feed: `printYear` arrives as a number for 895
@@ -82,8 +100,14 @@ with nikud and geresh/gershayim stripped so `אלפי מנשה עה"ת` is finda
 
 `src/lib/render.test.ts` runs against a fixture of ten real OCR pages from אלפי מנשה: it asserts
 no text is lost, opens the built EPUB and checks the zip layout, XML well-formedness, RTL
-metadata, embedded font, TOC anchors and attribution. `src/App.test.tsx` covers search, faceted
+metadata, embedded font, TOC anchors and attribution. `src/lib/pdf.test.ts` re-parses the generated
+PDF to check the outline, links and embedded fonts, and pins the bidi behaviour — including that
+embedded Latin and digits keep their own direction. `src/App.test.tsx` covers search, faceted
 filtering, sorting, URL state and the download flow.
+
+Verifying RTL output is genuinely tricky: PyMuPDF applies bidi at every extraction level, so it
+reports logical text for a correctly-drawn page and cannot be used to judge layout. The reliable
+check is a rendered image containing Latin markers, whose left/right position is unambiguous.
 
 ## Deployment
 

@@ -250,8 +250,8 @@ describe('book detail and download', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Word' }));
     await waitFor(() => expect(exportBook.mock.calls[0][1]).toBe('docx'));
 
-    await user.click(within(dialog).getByRole('button', { name: /PDF/ }));
-    await waitFor(() => expect(exportBook.mock.calls[1][1]).toBe('print'));
+    await user.click(within(dialog).getByRole('button', { name: 'PDF' }));
+    await waitFor(() => expect(exportBook.mock.calls[1][1]).toBe('pdf'));
   });
 
   it('surfaces the reason an export failed', async () => {

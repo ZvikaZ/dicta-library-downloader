@@ -7,11 +7,11 @@ import type { ExportFormat } from './types';
 export const FORMAT_LABEL: Record<ExportFormat, string> = {
   epub: 'EPUB',
   docx: 'Word',
-  print: 'PDF (הדפסה)',
+  pdf: 'PDF',
 };
 
 export const FORMAT_HINT: Record<ExportFormat, string> = {
   epub: 'לקוראי ספרים דיגיטליים',
   docx: 'לעריכה בוורד',
-  print: 'שמירה כ‑PDF מחלון ההדפסה',
+  pdf: 'להדפסה ולקריאה, עם תוכן עניינים וסימניות',
 };

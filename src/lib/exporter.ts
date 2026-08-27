@@ -1,7 +1,9 @@
+import regularFontUrl from '../assets/fonts/FrankRuhlLibre-Regular.ttf?url';
+import boldFontUrl from '../assets/fonts/FrankRuhlLibre-Bold.ttf?url';
 import { buildDocx } from './docx';
 import { buildEpub } from './epub';
 import { loadBook, type Progress } from './fetchBook';
-import { printDocument } from './printView';
+import { buildPdf, type PdfFonts } from './pdf';
 import type { Book, BookDoc, ExportFormat } from './types';
 
 export function saveBytes(bytes: Uint8Array, fileName: string, mime: string): void {
@@ -15,6 +17,26 @@ export function saveBytes(bytes: Uint8Array, fileName: string, mime: string): vo
   a.remove();
   // Revoking immediately can cancel the download in some browsers.
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/**
+ * The PDF fonts are fetched from our own origin on first use, rather than
+ * bundled: they are ~100 kB that only a PDF export needs.
+ */
+let fontsPromise: Promise<PdfFonts> | null = null;
+
+function pdfFonts(): Promise<PdfFonts> {
+  fontsPromise ??= (async () => {
+    const [regular, bold] = await Promise.all(
+      [regularFontUrl, boldFontUrl].map(async (url) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('טעינת הגופן נכשלה');
+        return new Uint8Array(await res.arrayBuffer());
+      }),
+    );
+    return { regular, bold };
+  })();
+  return fontsPromise;
 }
 
 /** Cache parsed books so switching format does not re-download the archive. */
@@ -35,8 +57,8 @@ export async function exportBook(
 ): Promise<void> {
   const doc = await getDoc(book, onProgress);
 
-  if (format === 'print') {
-    printDocument(book, doc);
+  if (format === 'pdf') {
+    saveBytes(await buildPdf(book, doc, await pdfFonts()), `${book.id}.pdf`, 'application/pdf');
     return;
   }
   if (format === 'epub') {

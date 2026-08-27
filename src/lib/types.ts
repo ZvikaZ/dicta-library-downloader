@@ -60,4 +60,4 @@ export interface BookDoc {
   fidelity: Fidelity;
 }
 
-export type ExportFormat = 'epub' | 'docx' | 'print';
+export type ExportFormat = 'epub' | 'docx' | 'pdf';

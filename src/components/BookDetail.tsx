@@ -42,7 +42,7 @@ export function BookDetail({ book, onClose }: Props) {
         setStatus(STAGE_TEXT[stage]);
         setRatio(stage === 'download' ? r : 1);
       });
-      setStatus(format === 'print' ? 'נפתח חלון הדפסה.' : 'הקובץ ירד.');
+      setStatus('הקובץ ירד.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ההמרה נכשלה.');
       setStatus('');
@@ -90,7 +90,7 @@ export function BookDetail({ book, onClose }: Props) {
         </table>
 
         <div className="download-row">
-          {(['epub', 'docx', 'print'] as ExportFormat[]).map((f) => (
+          {(['epub', 'docx', 'pdf'] as ExportFormat[]).map((f) => (
             <button
               type="button"
               key={f}
