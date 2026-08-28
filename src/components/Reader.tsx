@@ -294,11 +294,13 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
           )}
           {matches.length > 0 && (
             <>
-              <button type="button" className="rd-btn" onClick={() => step(-1)} aria-label="הקודם">
-                ›
+              {/* Words rather than arrows: no ambiguity about which way
+                  "forward" points in a right-to-left interface. */}
+              <button type="button" className="rd-btn rd-step" onClick={() => step(-1)}>
+                הקודם
               </button>
-              <button type="button" className="rd-btn" onClick={() => step(1)} aria-label="הבא">
-                ‹
+              <button type="button" className="rd-btn rd-step" onClick={() => step(1)}>
+                הבא
               </button>
             </>
           )}

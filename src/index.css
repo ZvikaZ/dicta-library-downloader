@@ -525,3 +525,5 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--accent);
   transition: width 0.15s linear;
 }
+
+.rd-step { padding: 5px 9px; font-size: 12.5px; }

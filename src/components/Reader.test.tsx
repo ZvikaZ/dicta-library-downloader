@@ -121,10 +121,8 @@ describe('searching inside the book', () => {
     await user.type(screen.getByPlaceholderText('חיפוש בספר…'), 'האש');
     await waitFor(() => expect(screen.getByText('1/2')).toBeInTheDocument());
 
+    // Named, not arrowed: the direction of "forward" is not obvious in RTL.
     const next = screen.getByRole('button', { name: 'הבא' });
-    expect(next).toHaveTextContent('‹'); // forward is leftwards in RTL
-    expect(screen.getByRole('button', { name: 'הקודם' })).toHaveTextContent('›');
-
     await user.click(next);
     expect(screen.getByText('2/2')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'הבא' }));

@@ -13,5 +13,5 @@ export const FORMAT_LABEL: Record<ExportFormat, string> = {
 export const FORMAT_HINT: Record<ExportFormat, string> = {
   epub: 'לקוראי ספרים דיגיטליים',
   docx: 'לעריכה בוורד',
-  pdf: 'להדפסה ולקריאה, עם תוכן עניינים וסימניות',
+  pdf: 'להדפסה',
 };
