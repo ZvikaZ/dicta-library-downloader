@@ -1,4 +1,5 @@
 import fontkit from '@pdf-lib/fontkit';
+import bidiFactory from 'bidi-js';
 import {
   PDFDocument,
   PDFHexString,
@@ -68,18 +69,89 @@ interface LaidPage {
   folios: { folio: number; y: number }[];
 }
 
-// NOTE ON DIRECTION — read before "fixing" anything here.
+const bidi = bidiFactory();
+
+// NOTE ON DIRECTION — read before changing anything here.
 //
-// Text is passed to pdf-lib in LOGICAL order and nothing reorders it first.
-// @pdf-lib/fontkit runs the Unicode Bidi Algorithm inside its own layout step,
-// so it emits the glyphs in visual order and stores them that way — which is
-// exactly what Word does, and what Foxit, Acrobat and the rest expect when they
-// re-apply bidi for copy and search.
+// @pdf-lib/fontkit reverses any run containing RTL characters. That is not the
+// Unicode Bidi Algorithm: it flips digits, Latin and brackets too, so
+// "וילנה 1880" comes out as "0881 הנליו". Pure Hebrew happens to survive.
 //
-// Reordering the string ourselves first (with bidi-js, say) reverses it twice:
-// the page still looks right, but the stored text comes out logical and search
-// silently breaks in mainstream readers. That bug cost a lot of time; do not
-// reintroduce it.
+// So we do the real algorithm with bidi-js, but only far enough to split a line
+// into directional runs and order them left to right. Each run is then handed
+// to pdf-lib in LOGICAL order:
+//   - an RTL run is reversed by fontkit, which is exactly what we want, and
+//     lands in the file in visual order — the same convention Word uses, which
+//     is what makes copy and search work in Foxit and Acrobat;
+//   - an LTR run has no RTL characters, so fontkit leaves it alone.
+// Never pre-reverse a whole line and hand that over: fontkit reverses it again,
+// the page still looks right, and search silently breaks.
+
+interface Run {
+  /** Logical-order text of this run, with bidi mirroring already applied. */
+  text: string;
+  spaces: number;
+}
+
+// Characters that must be drawn as their mirror image inside a right-to-left
+// run (Unicode rule L4). bidi-js exposes a map for this but returns it empty,
+// so the pairs are listed here — the set that actually occurs in these texts.
+const MIRRORED = new Map(
+  Object.entries({
+    '(': ')',
+    ')': '(',
+    '[': ']',
+    ']': '[',
+    '{': '}',
+    '}': '{',
+    '<': '>',
+    '>': '<',
+    '«': '»',
+    '»': '«',
+    '‹': '›',
+    '›': '‹',
+  }),
+);
+
+/** Split a line into directional runs, ordered left to right for display. */
+export function directionalRuns(logical: string): Run[] {
+  if (!logical) return [];
+
+  const levels = bidi.getEmbeddingLevels(logical, 'rtl');
+  const order = bidi.getReorderedIndices(logical, levels);
+  // Odd embedding levels run right to left, and only there is a bracket drawn
+  // as its mirror.
+  const charAt = (i: number) =>
+    levels.levels[i] % 2 === 1 ? (MIRRORED.get(logical[i]) ?? logical[i]) : logical[i];
+
+  const runs: Run[] = [];
+  let start = 0;
+  const flush = (end: number) => {
+    if (end <= start) return;
+    const indices = order.slice(start, end);
+    // Within a run the source indices ascend (LTR) or descend (RTL); either
+    // way the logical text is the sorted range.
+    const lo = Math.min(...indices);
+    const hi = Math.max(...indices);
+    let text = '';
+    for (let i = lo; i <= hi; i++) text += charAt(i);
+    runs.push({ text, spaces: (text.match(/ /g) ?? []).length });
+  };
+
+  for (let k = 1; k <= order.length; k++) {
+    const prev = levels.levels[order[k - 1]];
+    const curr = k < order.length ? levels.levels[order[k]] : -1;
+    // A run ends when the direction changes, or when the indices stop being
+    // contiguous in the direction this run is running.
+    const contiguous = k < order.length && Math.abs(order[k] - order[k - 1]) === 1;
+    if (prev !== curr || !contiguous) {
+      flush(k);
+      start = k;
+    }
+  }
+
+  return runs;
+}
 
 function textOf(spans: Span[]): string {
   return spans
@@ -190,24 +262,30 @@ class Layout {
     const { size, bold } = opts;
     if (!logical.trim()) return;
 
-    const width = this.width(logical, bold, size);
-    const boxWidth = CONTENT_W - opts.indent;
-    const gaps = (logical.match(/ /g) ?? []).length;
+    const runs = directionalRuns(logical);
+    if (runs.length === 0) return;
 
-    let x: number;
+    const widths = runs.map((r) => this.width(r.text, bold, size));
+    const natural = widths.reduce((a, b) => a + b, 0);
+    const spaces = runs.reduce((a, r) => a + r.spaces, 0);
+    const boxWidth = CONTENT_W - opts.indent;
+
+    // Tw widens every space glyph, so justification needs no extra draw calls.
     let wordSpacing = 0;
-    if (opts.justify && gaps > 0 && width < boxWidth) {
-      // Tw widens every space in the run, so justification needs no extra
-      // draw calls and the glyph advances stay natural — as Word's do.
-      wordSpacing = (boxWidth - width) / gaps;
+    let x: number;
+    if (opts.justify && spaces > 0 && natural < boxWidth) {
+      wordSpacing = (boxWidth - natural) / spaces;
       x = MARGIN_X;
     } else if (opts.centre) {
-      x = MARGIN_X + (CONTENT_W - width) / 2;
+      x = MARGIN_X + (CONTENT_W - natural) / 2;
     } else {
-      x = PAGE_W - MARGIN_X - opts.indent - width;
+      x = PAGE_W - MARGIN_X - opts.indent - natural;
     }
 
-    this.page.chunks.push({ text: logical, x, y: this.y, bold, size, wordSpacing });
+    runs.forEach((run, i) => {
+      this.page.chunks.push({ text: run.text, x, y: this.y, bold, size, wordSpacing });
+      x += widths[i] + run.spaces * wordSpacing;
+    });
   }
 
   space(height: number): void {
@@ -271,20 +349,26 @@ function drawLine(
   },
 ): void {
   if (!text.trim()) return;
-  const width = opts.font.widthOfTextAtSize(text, opts.size);
-  const x =
+  const runs = directionalRuns(text);
+  const widths = runs.map((r) => opts.font.widthOfTextAtSize(r.text, opts.size));
+  const width = widths.reduce((a, b) => a + b, 0);
+
+  let x =
     opts.align === 'right'
       ? PAGE_W - MARGIN_X - width
       : opts.align === 'left'
         ? (opts.left ?? MARGIN_X)
         : MARGIN_X + (CONTENT_W - width) / 2;
 
-  page.drawText(text, {
-    x,
-    y: opts.y,
-    size: opts.size,
-    font: opts.font,
-    color: opts.colour ?? INK,
+  runs.forEach((run, i) => {
+    page.drawText(run.text, {
+      x,
+      y: opts.y,
+      size: opts.size,
+      font: opts.font,
+      color: opts.colour ?? INK,
+    });
+    x += widths[i];
   });
 }
 

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, sampleArchive } from '../test/fixtures';
 import { pagesFromZip } from './fetchBook';
 import { buildDoc } from './parseOcr';
-import { buildPdf } from './pdf';
+import { buildPdf, directionalRuns } from './pdf';
 import { tocEntries } from './toc';
 
 const doc = buildDoc(await pagesFromZip(sampleArchive()));
@@ -19,36 +19,42 @@ const bytes = await buildPdf(alfeiMenashe, doc, fonts);
 // Parsed once at module scope: `await` is not allowed inside describe().
 const loaded = await PDFDocument.load(bytes);
 
-// Hebrew final forms (ך ם ן ף ץ) occur only at the END of a word in logical
-// order, so which end of a word they sit on tells us how the text is stored —
-// no eyeballing of rendered Hebrew required.
-const FINALS = new Set(['ך', 'ם', 'ן', 'ף', 'ץ']);
-
 describe('text direction', () => {
-  it('hands pdf-lib logical text and lets fontkit do the bidi', () => {
-    // Guard against reintroducing a manual reordering pass: the module must
-    // not depend on a bidi library at all.
-    const source = readFileSync(resolve('src/lib/pdf.ts'), 'utf8');
-    expect(source).not.toContain("from 'bidi-js'");
-    expect(source).not.toMatch(/getReorderedString|getReorderedIndices/);
+  it('keeps a pure Hebrew line as one run', () => {
+    // fontkit reverses a single RTL run correctly on its own, so body text
+    // must not be chopped up unnecessarily.
+    expect(directionalRuns('אלפי מנשה חלק א').map((r) => r.text)).toEqual(['אלפי מנשה חלק א']);
   });
 
-  it('stores glyphs in visual order, as mainstream readers expect', async () => {
-    const reloaded = await PDFDocument.load(bytes);
-    expect(reloaded.getPageCount()).toBeGreaterThan(0);
+  it('gives digits their own run, left of the Hebrew', () => {
+    // fontkit reverses anything containing RTL characters, digits included,
+    // so "וילנה 1880" came out as "0881 הנליו". Splitting keeps the number
+    // intact and places it correctly.
+    expect(directionalRuns('וילנה 1880').map((r) => r.text)).toEqual(['1880', 'וילנה ']);
+  });
 
-    // Word stores visual order and Foxit/Acrobat re-apply bidi when copying or
-    // searching; storing logical order instead renders identically but breaks
-    // search. Assert on the rendered word shapes via the final-letter rule.
-    const words = tocEntries(doc)
-      .map((e) => e.text)
-      .join(' ')
-      .split(' ')
-      .filter(Boolean);
-    const endingInFinal = words.filter((w) => FINALS.has(w[w.length - 1])).length;
-    const startingWithFinal = words.filter((w) => FINALS.has(w[0])).length;
-    // Our in-memory model is logical, which is the input contract.
-    expect(endingInFinal).toBeGreaterThan(startingWithFinal);
+  it('keeps Latin runs intact and forward', () => {
+    const runs = directionalRuns('רישיון: Creative Commons BY-SA 4.0').map((r) => r.text);
+    expect(runs[0]).toBe('Creative Commons BY-SA 4.0');
+    expect(runs).toHaveLength(2);
+  });
+
+  it('mirrors brackets inside a right-to-left run', () => {
+    // Unicode rule L4. bidi-js returns an empty mirroring map, so this is done
+    // by hand; without it the parentheses face the wrong way.
+    expect(directionalRuns('ספר (עם סוגריים) כאן')[0].text).toBe('ספר )עם סוגריים( כאן');
+  });
+
+  it('does not mirror brackets in a left-to-right run', () => {
+    expect(directionalRuns('Creative (Commons)')[0].text).toContain('(Commons)');
+  });
+
+  it('never hands pdf-lib a pre-reversed line', () => {
+    // Reordering a whole line before drawing reverses it twice: the page still
+    // looks right but the stored text becomes logical and search breaks in
+    // Foxit and Acrobat. Runs are reordered; their text stays logical.
+    const source = readFileSync(resolve('src/lib/pdf.ts'), 'utf8');
+    expect(source).not.toMatch(/getReorderedString/);
   });
 });
 
