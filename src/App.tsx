@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { BookDetail } from './components/BookDetail';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { BookList } from './components/BookList';
 import { Filters } from './components/Filters';
 import {
@@ -13,7 +12,18 @@ import {
   type Query,
   type SortKey,
 } from './lib/search';
-import type { Book, Catalogue } from './lib/types';
+import type { Catalogue } from './lib/types';
+
+// The reader carries the zip reader and parser with it; browsing the catalogue
+// should not pay for that until a book is actually opened.
+const Reader = lazy(() =>
+  import('./components/Reader').then((m) => ({ default: m.Reader })),
+);
+
+function folioFromParams(params: URLSearchParams): number | null {
+  const n = Number(params.get('p'));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 const DICTA_SITE = 'https://library.dicta.org.il';
 const DICTA_REPO =
@@ -27,7 +37,17 @@ export function App() {
     paramsToQuery(new URLSearchParams(window.location.search)),
   );
   const [sort, setSort] = useState<SortKey>('title');
-  const [selected, setSelected] = useState<Book | null>(null);
+  // Seeded from the URL at mount, not after the catalogue arrives: the effect
+  // that syncs the URL runs on the first render too, and would otherwise strip
+  // `read` before anything had a chance to restore it.
+  const [readingId, setReadingId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('read'),
+  );
+  // The scan folio, so a link can cite the same place the PDF and Word margins
+  // print — not our own pagination, which would not survive a reformat.
+  const [readingFolio, setReadingFolio] = useState<number | null>(() =>
+    folioFromParams(new URLSearchParams(window.location.search)),
+  );
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}books.json`)
@@ -39,17 +59,42 @@ export function App() {
       .catch(() => setLoadError('טעינת רשימת הספרים נכשלה.'));
   }, []);
 
+  // Back, forward and any other outside change to the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const params = new URLSearchParams(window.location.search);
+      setQuery(paramsToQuery(params));
+      setReadingId(params.get('read'));
+      setReadingFolio(folioFromParams(params));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   // Keep the URL in step so a filtered view can be shared or bookmarked.
   useEffect(() => {
-    const params = queryToParams(query).toString();
-    const url = params ? `?${params}` : window.location.pathname;
-    window.history.replaceState(null, '', url);
-  }, [query]);
+    const params = queryToParams(query);
+    if (readingId) params.set('read', readingId);
+    if (readingId && readingFolio) params.set('p', String(readingFolio));
+    const search = params.toString();
+    window.history.replaceState(null, '', search ? `?${search}` : window.location.pathname);
+  }, [query, readingId, readingFolio]);
 
   const results = useMemo(() => {
     if (!catalogue) return [];
     return sortBooks(filterBooks(catalogue.books, query), sort);
   }, [catalogue, query, sort]);
+
+  // A book opened for reading is addressable, so a link points at the text.
+  const reading = useMemo(
+    () => (catalogue && readingId ? (catalogue.books.find((b) => b.id === readingId) ?? null) : null),
+    [catalogue, readingId],
+  );
+
+  // Drop an id that matches nothing, so the URL does not keep a dead param.
+  useEffect(() => {
+    if (catalogue && readingId && !reading) setReadingId(null);
+  }, [catalogue, readingId, reading]);
 
   const subs = useMemo(
     () => (catalogue ? availableSubcategories(catalogue.books, query) : []),
@@ -104,12 +149,31 @@ export function App() {
               </label>
             </div>
 
-            <BookList books={results} onSelect={setSelected} />
+            {/* Selecting a book opens it; the downloads live in the reader. */}
+            <BookList
+              books={results}
+              onSelect={(b) => {
+                setReadingId(b.id);
+                setReadingFolio(null);
+              }}
+            />
           </section>
         </main>
       )}
 
-      {selected && <BookDetail book={selected} onClose={() => setSelected(null)} />}
+      {reading && (
+        <Suspense fallback={<p className="empty">טוען…</p>}>
+          <Reader
+            book={reading}
+            initialFolio={readingFolio}
+            onFolio={setReadingFolio}
+            onClose={() => {
+              setReadingId(null);
+              setReadingFolio(null);
+            }}
+          />
+        </Suspense>
+      )}
 
       <footer className="site-foot">
         <p style={{ margin: '0 0 6px' }}>

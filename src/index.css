@@ -240,86 +240,6 @@ button, input, select { font: inherit; color: inherit; }
 
 .empty { padding: 40px 10px; text-align: center; color: var(--ink-soft); }
 
-/* ---------- detail ---------- */
-
-.backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgb(31 27 22 / 45%);
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 5vh 16px;
-  overflow-y: auto;
-  z-index: 20;
-}
-
-.sheet {
-  background: var(--card);
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgb(0 0 0 / 30%);
-  width: min(620px, 100%);
-  padding: 24px 26px 22px;
-}
-
-.sheet h2 { font-family: var(--serif); font-size: 26px; margin: 0 0 4px; line-height: 1.25; }
-.sheet .byline { color: var(--ink-soft); margin: 0 0 16px; }
-
-.detail-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 13.5px; }
-.detail-table th {
-  text-align: start;
-  font-weight: 600;
-  color: var(--ink-faint);
-  padding: 6px 0;
-  width: 34%;
-  vertical-align: top;
-}
-.detail-table td { padding: 6px 0; border-bottom: 1px solid var(--rule); }
-
-.download-row { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 6px; }
-
-.dl {
-  flex: 1 1 130px;
-  padding: 11px 14px;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.dl.secondary { background: transparent; color: var(--accent); }
-.dl:disabled { opacity: 0.55; cursor: progress; }
-
-.progress { height: 4px; background: var(--rule); border-radius: 3px; overflow: hidden; margin-top: 12px; }
-.progress > div { height: 100%; background: var(--accent); transition: width 0.2s; }
-
-.status { font-size: 13px; color: var(--ink-soft); margin-top: 8px; min-height: 18px; }
-.status.error { color: var(--accent); font-weight: 600; }
-
-.sheet-foot {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--rule);
-  font-size: 12.5px;
-  color: var(--ink-faint);
-  line-height: 1.6;
-}
-
-.sheet-foot a { color: var(--accent); }
-
-.close {
-  float: left;
-  background: none;
-  border: none;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--ink-faint);
-  padding: 2px 6px;
-}
-
 .site-foot {
   border-top: 1px solid var(--rule);
   background: var(--card);
@@ -331,3 +251,180 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .site-foot a { color: var(--accent); }
+
+/* ---------- reader ---------- */
+
+.reader {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+
+.rd-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--card);
+}
+
+.rd-title { display: grid; line-height: 1.25; min-width: 0; }
+.rd-title strong { font-family: var(--serif); font-size: 17px; }
+
+.rd-btn {
+  border: 1px solid var(--rule);
+  background: var(--card);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.rd-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rd-btn:disabled { opacity: 0.5; cursor: default; }
+
+.rd-search { display: flex; align-items: center; gap: 6px; margin-inline-start: auto; }
+
+.rd-search input {
+  width: min(240px, 40vw);
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+}
+
+.rd-count { font-size: 12px; color: var(--ink-faint); min-width: 6ch; text-align: center; }
+.rd-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.rd-body { flex: 1; display: flex; min-height: 0; }
+
+.rd-toc {
+  width: 290px;
+  overflow-y: auto;
+  border-inline-start: 1px solid var(--rule);
+  background: var(--card);
+  padding: 10px 6px;
+}
+
+.rd-toc ol { list-style: none; margin: 0; padding: 0; }
+
+.rd-toc button {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  text-align: start;
+  background: none;
+  border: none;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.rd-toc button:hover { background: var(--accent-soft); color: var(--accent); }
+.rd-folio { margin-inline-start: auto; color: var(--ink-faint); font-size: 12px; }
+
+.rd-scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+
+.rd-text {
+  max-width: 38em;
+  margin: 0 auto;
+  padding: 32px 26px 25vh;
+  font-family: var(--serif);
+  line-height: 1.85;
+  text-align: justify;
+}
+
+.rd-block { position: relative; }
+
+/* The scan folio, in the outer margin — the same reference the PDF and Word
+   files carry, so a passage can be cited across all of them. */
+.rd-pagemark {
+  position: absolute;
+  inset-inline-end: 100%;
+  margin-inline-end: 14px;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink-faint);
+  user-select: none;
+}
+
+@media (width <= 780px) {
+  .rd-pagemark {
+    position: static;
+    display: inline-block;
+    margin: 0 0 2px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+  }
+  .rd-toc { position: absolute; inset: 0 0 0 auto; width: min(320px, 85vw); z-index: 2; }
+}
+
+.rd-heading {
+  font-size: 1.12em;
+  text-align: center;
+  margin: 1.7em 0 0.7em;
+  line-height: 1.4;
+}
+
+.rd-para { margin: 0 0 0.5em; text-indent: 1.3em; }
+.rd-para:first-of-type { text-indent: 0; }
+
+.rd-text mark {
+  background: #ffe9a8;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rd-text mark { background: #6b5a1f; }
+}
+
+.rd-msg { text-align: center; color: var(--ink-soft); padding: 60px 20px; }
+.rd-msg.rd-error { color: var(--accent); font-weight: 600; }
+
+.rd-colophon {
+  margin-top: 3em;
+  padding-top: 1em;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-align: center;
+  text-indent: 0;
+}
+
+.rd-colophon a { color: var(--accent); }
+
+.rd-front {
+  max-width: 38em;
+  margin: 0 auto;
+  padding: 40px 26px 6px;
+  text-align: center;
+  border-bottom: 1px solid var(--rule);
+}
+
+.rd-front h1 {
+  font-family: var(--serif);
+  font-size: 1.7em;
+  margin: 0 0 8px;
+  line-height: 1.25;
+}
+
+.rd-front-author { font-family: var(--serif); font-size: 1.02em; margin: 0 0 6px; }
+
+.rd-front-meta {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  margin: 0 0 10px;
+}

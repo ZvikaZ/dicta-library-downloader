@@ -10,6 +10,9 @@ const exportBook = vi.hoisted(() => vi.fn());
 // paints with come from ./lib/formats, which stays real.
 vi.mock('./lib/exporter', () => ({ exportBook }));
 
+const getDoc = vi.hoisted(() => vi.fn());
+vi.mock('./lib/bookCache', () => ({ getDoc, cached: () => undefined }));
+
 const books = [
   makeBook({
     id: 'alfeimenashe',
@@ -68,6 +71,12 @@ function mockCatalogue(payload: unknown = catalogue, ok = true) {
 }
 
 beforeEach(() => {
+  getDoc.mockReset();
+  getDoc.mockResolvedValue({
+    pageCount: 1,
+    fidelity: 'bold',
+    blocks: [{ kind: 'para', page: 2, spans: [{ text: 'פתח דבר לספר', bold: false }] }],
+  });
   exportBook.mockReset();
   exportBook.mockResolvedValue(undefined);
   window.history.replaceState(null, '', '/');
@@ -217,15 +226,16 @@ describe('sorting', () => {
 });
 
 describe('book detail and download', () => {
-  it('opens a dialogue with the book metadata', async () => {
+  it('opens the book itself, showing its details while the text loads', async () => {
     const user = userEvent.setup();
     await renderApp();
 
     await user.click(screen.getByText('אלפי מנשה חלק א'));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('מנשה בן פורת')).toBeInTheDocument();
-    expect(within(dialog).getByText('1880')).toBeInTheDocument();
-    expect(within(dialog).getByText(/זיהוי תווים אוטומטי/)).toBeInTheDocument();
+    const reader = await screen.findByRole('dialog');
+    // Catalogue metadata is on screen immediately, before the text arrives.
+    expect(within(reader).getByText('מנשה בן פורת')).toBeInTheDocument();
+    expect(within(reader).getByText(/1880/)).toBeInTheDocument();
+    expect(await screen.findByText('פתח דבר לספר')).toBeInTheDocument();
   });
 
   it('exports the chosen format for the chosen book', async () => {
@@ -288,5 +298,55 @@ describe('book detail and download', () => {
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});
+
+describe('the reader', () => {
+  it('opens from a ?read= link, so a refresh keeps your place', async () => {
+    // Regression: the URL-sync effect ran on the first render, before the
+    // catalogue had loaded, and stripped `read` from the URL — so reloading
+    // while reading dumped you back on the catalogue.
+    window.history.replaceState(null, '', '/?read=alfeimenashe');
+    render(<App />);
+
+    expect(await screen.findByText('פתח דבר לספר')).toBeInTheDocument();
+    expect(window.location.search).toContain('read=alfeimenashe');
+  });
+
+  it('records the opened book in the URL', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+
+    await user.click(screen.getByText('אלפי מנשה חלק א'));
+    expect(await screen.findByText('פתח דבר לספר')).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).toContain('read=alfeimenashe'));
+  });
+
+  it('opens at the folio a shared link cites', async () => {
+    // ?p= is the scan folio, the same number the PDF and Word margins print,
+    // so a citation survives any change to our own layout.
+    window.history.replaceState(null, '', '/?read=alfeimenashe&p=2');
+    render(<App />);
+    expect(await screen.findByText('פתח דבר לספר')).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).toContain('p=2'));
+  });
+
+  it('ignores a book id that matches nothing', async () => {
+    window.history.replaceState(null, '', '/?read=nosuchbook');
+    render(<App />);
+
+    await screen.findByText('אלפי מנשה חלק א');
+    await waitFor(() => expect(window.location.search).not.toContain('read='));
+  });
+
+  it('closing the reader returns to the catalogue and clears the URL', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/?read=alfeimenashe');
+    render(<App />);
+    await screen.findByText('פתח דבר לספר');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(window.location.search).not.toContain('read='));
+    expect(screen.getByText('אלפי מנשה חלק א')).toBeInTheDocument();
   });
 });

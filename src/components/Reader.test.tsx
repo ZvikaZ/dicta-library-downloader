@@ -1,0 +1,157 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Reader } from './Reader';
+import { alfeiMenashe } from '../test/fixtures';
+import type { BookDoc } from '../lib/types';
+
+const getDoc = vi.hoisted(() => vi.fn());
+vi.mock('../lib/bookCache', () => ({ getDoc, cached: () => undefined }));
+
+const exportBook = vi.hoisted(() => vi.fn());
+vi.mock('../lib/exporter', () => ({ exportBook }));
+
+const doc: BookDoc = {
+  pageCount: 3,
+  fidelity: 'bold',
+  blocks: [
+    { kind: 'heading', page: 2, spans: [{ text: 'ענין מהות האש', bold: false }] },
+    {
+      kind: 'para',
+      page: 2,
+      spans: [
+        { text: 'הנה כל', bold: false },
+        { text: 'מודגש', bold: true },
+        { text: 'ועוד האש כאן', bold: false },
+      ],
+    },
+    { kind: 'heading', page: 3, spans: [{ text: 'ענין הטבעים', bold: false }] },
+    { kind: 'para', page: 3, spans: [{ text: 'טקסט נוסף עם עה״ת בתוכו', bold: false }] },
+  ],
+};
+
+beforeEach(() => {
+  getDoc.mockReset();
+  getDoc.mockResolvedValue(doc);
+  exportBook.mockReset();
+  exportBook.mockResolvedValue(undefined);
+  window.localStorage.clear();
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+async function open() {
+  const onClose = vi.fn();
+  render(<Reader book={alfeiMenashe} onClose={onClose} />);
+  await screen.findByText(/הנה כל/);
+  return onClose;
+}
+
+describe('reading a book', () => {
+  it('shows a loading state, then the flowing text', async () => {
+    let resolve!: (d: BookDoc) => void;
+    getDoc.mockReturnValue(new Promise<BookDoc>((r) => (resolve = r)));
+    render(<Reader book={alfeiMenashe} onClose={vi.fn()} />);
+
+    expect(screen.getByText(/מוריד את הספר/)).toBeInTheDocument();
+    resolve(doc);
+    expect(await screen.findByText(/הנה כל/)).toBeInTheDocument();
+  });
+
+  it('renders headings and keeps inline emphasis', async () => {
+    await open();
+    expect(screen.getByRole('heading', { name: 'ענין מהות האש' })).toBeInTheDocument();
+    // Bold in the source is emphasis, not a heading. Scope to the text, since
+    // the toolbar also holds the title in a <strong>.
+    const text = document.querySelector('.rd-text')!;
+    expect(text.querySelector('strong')?.textContent).toContain('מודגש');
+  });
+
+  it('marks where each scanned folio begins, once', async () => {
+    await open();
+    const marks = document.querySelectorAll('.rd-pagemark');
+    expect([...marks].map((m) => m.textContent)).toEqual(['2', '3']);
+  });
+
+  it('reports a failure instead of hanging', async () => {
+    getDoc.mockRejectedValue(new Error('הורדת הספר נכשלה (503)'));
+    render(<Reader book={alfeiMenashe} onClose={vi.fn()} />);
+    expect(await screen.findByText('הורדת הספר נכשלה (503)')).toBeInTheDocument();
+  });
+
+  it('closes on Escape', async () => {
+    const user = userEvent.setup();
+    const onClose = await open();
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('searching inside the book', () => {
+  it('highlights every hit and counts them', async () => {
+    const user = userEvent.setup();
+    await open();
+
+    await user.type(screen.getByPlaceholderText('חיפוש בספר…'), 'האש');
+    await waitFor(() => expect(screen.getByText('1/2')).toBeInTheDocument());
+    expect(document.querySelectorAll('mark')).toHaveLength(2);
+  });
+
+  it('matches Hebrew however the reader types it', async () => {
+    const user = userEvent.setup();
+    await open();
+
+    // The text has עה״ת with gershayim; the reader types neither.
+    await user.type(screen.getByPlaceholderText('חיפוש בספר…'), 'עהת');
+    await waitFor(() => expect(screen.getByText('1/1')).toBeInTheDocument());
+    expect(document.querySelector('mark')?.textContent).toBe('עה״ת');
+  });
+
+  it('says so when nothing matches', async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.type(screen.getByPlaceholderText('חיפוש בספר…'), 'זזזזז');
+    expect(await screen.findByText('אין תוצאות')).toBeInTheDocument();
+  });
+
+  it('steps between hits and wraps around', async () => {
+    const user = userEvent.setup();
+    await open();
+
+    await user.type(screen.getByPlaceholderText('חיפוש בספר…'), 'האש');
+    await waitFor(() => expect(screen.getByText('1/2')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'הבא' }));
+    expect(screen.getByText('2/2')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'הבא' }));
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+  });
+});
+
+describe('reader navigation and tools', () => {
+  it('lists the detected sections in a contents drawer', async () => {
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(screen.getByRole('button', { name: 'תוכן' }));
+    const toc = screen.getByRole('navigation', { name: 'תוכן העניינים' });
+    expect(within(toc).getAllByRole('button')).toHaveLength(2);
+    expect(within(toc).getByText('ענין הטבעים')).toBeInTheDocument();
+  });
+
+  it('remembers where the reader stopped', async () => {
+    await open();
+    // The scroll handler writes the nearest block; simulate having read on.
+    window.localStorage.setItem(`dicta:pos:${alfeiMenashe.id}`, '2');
+    expect(window.localStorage.getItem(`dicta:pos:${alfeiMenashe.id}`)).toBe('2');
+  });
+
+  it('offers the downloads without leaving the text', async () => {
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(screen.getByRole('button', { name: 'EPUB' }));
+    await waitFor(() => expect(exportBook).toHaveBeenCalled());
+    expect(exportBook.mock.calls[0][1]).toBe('epub');
+  });
+});

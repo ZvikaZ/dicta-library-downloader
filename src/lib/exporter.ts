@@ -3,9 +3,10 @@ import boldFontUrl from '../assets/fonts/FrankRuhlLibre-Bold.ttf?url';
 import { buildDocx } from './docx';
 import { downloadName } from './filename';
 import { buildEpub } from './epub';
-import { loadBook, type Progress } from './fetchBook';
+import { getDoc } from './bookCache';
+import type { Progress } from './fetchBook';
 import { buildPdf, type PdfFonts } from './pdf';
-import type { Book, BookDoc, ExportFormat } from './types';
+import type { Book, ExportFormat } from './types';
 
 export function saveBytes(bytes: Uint8Array, fileName: string, mime: string): void {
   const blob = new Blob([bytes as unknown as BlobPart], { type: mime });
@@ -38,17 +39,6 @@ function pdfFonts(): Promise<PdfFonts> {
     return { regular, bold };
   })();
   return fontsPromise;
-}
-
-/** Cache parsed books so switching format does not re-download the archive. */
-const cache = new Map<string, BookDoc>();
-
-export async function getDoc(book: Book, onProgress?: Progress): Promise<BookDoc> {
-  const hit = cache.get(book.id);
-  if (hit) return hit;
-  const doc = await loadBook(book, onProgress);
-  cache.set(book.id, doc);
-  return doc;
 }
 
 export async function exportBook(
