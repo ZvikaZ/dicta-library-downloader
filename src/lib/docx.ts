@@ -1,6 +1,8 @@
 import {
   AlignmentType,
   Document,
+  FrameAnchorType,
+  FrameWrap,
   Footer,
   Header,
   HeadingLevel,
@@ -61,6 +63,33 @@ function rtl(
           bold: opts.heading || s.bold,
         }),
     ),
+  });
+}
+
+/**
+ * The scanned folio, floated into the outer margin beside the line it begins
+ * on — the same reference mark the PDF carries.
+ *
+ * A framed paragraph is Word's mechanism for marginal notes: anchored to the
+ * page horizontally it sits inside the left margin (the outer edge in a
+ * right-to-left book), and anchored to the text vertically it travels with the
+ * paragraph it marks, however Word repaginates.
+ */
+function folioMark(folio: number): Paragraph {
+  return new Paragraph({
+    frame: {
+      type: 'absolute',
+      position: { x: 420, y: 0 },
+      width: 520,
+      height: 260,
+      anchor: { horizontal: FrameAnchorType.PAGE, vertical: FrameAnchorType.TEXT },
+      wrap: FrameWrap.NONE,
+    },
+    alignment: AlignmentType.LEFT,
+    spacing: { before: 0, after: 0 },
+    children: [
+      new TextRun({ text: String(folio), font: FONT, size: 15, color: GREY }),
+    ],
   });
 }
 
@@ -138,9 +167,15 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
     contents.push(new Paragraph({ children: [new PageBreak()] }));
   }
 
-  const body = doc.blocks.map((b) =>
-    rtl(b.spans, { heading: b.kind === 'heading', indent: b.kind === 'para' }),
-  );
+  const seenFolios = new Set<number>();
+  const body: Paragraph[] = [];
+  for (const b of doc.blocks) {
+    if (!seenFolios.has(b.page)) {
+      seenFolios.add(b.page);
+      body.push(folioMark(b.page));
+    }
+    body.push(rtl(b.spans, { heading: b.kind === 'heading', indent: b.kind === 'para' }));
+  }
 
   const document = new Document({
     creator: book.author ?? 'Dicta',

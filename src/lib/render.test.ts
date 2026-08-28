@@ -382,6 +382,23 @@ describe('DOCX presentation', () => {
     expect(footer).toContain('fldChar');
   });
 
+  it('floats the scanned folio into the outer margin', async () => {
+    const zip = await JSZip.loadAsync(await built);
+    const xml = await zip.file('word/document.xml')!.async('string');
+
+    // Word's mechanism for a marginal note: a framed paragraph anchored to the
+    // page horizontally and to the text vertically, so it travels with its
+    // paragraph however Word repaginates.
+    const frames = xml.match(/<w:framePr[^>]*\/>/g) ?? [];
+    expect(frames.length).toBeGreaterThan(0);
+    expect(frames[0]).toContain('w:hAnchor="page"');
+    expect(frames[0]).toContain('w:vAnchor="text"');
+
+    // One marker per distinct scanned folio, not one per paragraph.
+    const folios = new Set(doc.blocks.map((b) => b.page));
+    expect(frames).toHaveLength(folios.size);
+  });
+
   it('indents paragraphs and justifies them like a printed book', async () => {
     const zip = await JSZip.loadAsync(await built);
     const xml = await zip.file('word/document.xml')!.async('string');
