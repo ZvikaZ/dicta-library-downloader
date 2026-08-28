@@ -91,6 +91,8 @@ interface Run {
   /** Logical-order text of this run, with bidi mirroring already applied. */
   text: string;
   spaces: number;
+  /** True when this run reads right to left. */
+  rtl: boolean;
 }
 
 // Characters that must be drawn as their mirror image inside a right-to-left
@@ -112,6 +114,24 @@ const MIRRORED = new Map(
     '›': '‹',
   }),
 );
+
+/**
+ * The words of a line in display order, each word still in logical order.
+ *
+ * Word-level placement is what makes justification possible: PDF's `Tw`
+ * operator only widens single-byte code 32, so it does nothing for the
+ * two-byte Identity-H encoding these embedded fonts use. Word does the same
+ * thing — one show-text operation per run of words.
+ */
+export function displayWords(logical: string): { text: string }[] {
+  const cells: { text: string }[] = [];
+  for (const run of directionalRuns(logical)) {
+    const words = run.text.split(' ').filter(Boolean);
+    if (run.rtl) words.reverse();
+    for (const text of words) cells.push({ text });
+  }
+  return cells;
+}
 
 /** Split a line into directional runs, ordered left to right for display. */
 export function directionalRuns(logical: string): Run[] {
@@ -135,7 +155,11 @@ export function directionalRuns(logical: string): Run[] {
     const hi = Math.max(...indices);
     let text = '';
     for (let i = lo; i <= hi; i++) text += charAt(i);
-    runs.push({ text, spaces: (text.match(/ /g) ?? []).length });
+    runs.push({
+      text,
+      spaces: (text.match(/ /g) ?? []).length,
+      rtl: levels.levels[lo] % 2 === 1,
+    });
   };
 
   for (let k = 1; k <= order.length; k++) {
@@ -262,29 +286,39 @@ class Layout {
     const { size, bold } = opts;
     if (!logical.trim()) return;
 
-    const runs = directionalRuns(logical);
-    if (runs.length === 0) return;
+    const words = displayWords(logical);
+    if (words.length === 0) return;
 
-    const widths = runs.map((r) => this.width(r.text, bold, size));
-    const natural = widths.reduce((a, b) => a + b, 0);
-    const spaces = runs.reduce((a, r) => a + r.spaces, 0);
+    const widths = words.map((w) => this.width(w.text, bold, size));
+    const inkWidth = widths.reduce((a, b) => a + b, 0);
+    const spaceW = this.width(' ', bold, size);
+    const gaps = words.length - 1;
+    const natural = inkWidth + gaps * spaceW;
     const boxWidth = CONTENT_W - opts.indent;
 
-    // Tw widens every space glyph, so justification needs no extra draw calls.
-    let wordSpacing = 0;
+    // Justify by widening the gaps, never by stretching the glyphs. A gap that
+    // would more than double is left alone: a short last-of-paragraph line
+    // stretched across the page looks worse than a ragged one.
+    let gap = spaceW;
     let x: number;
-    if (opts.justify && spaces > 0 && natural < boxWidth) {
-      wordSpacing = (boxWidth - natural) / spaces;
-      x = MARGIN_X;
+    if (opts.justify && gaps > 0 && natural < boxWidth) {
+      const wanted = (boxWidth - inkWidth) / gaps;
+      if (wanted <= spaceW * 3) {
+        gap = wanted;
+        x = MARGIN_X;
+      } else {
+        x = PAGE_W - MARGIN_X - opts.indent - natural;
+      }
     } else if (opts.centre) {
       x = MARGIN_X + (CONTENT_W - natural) / 2;
     } else {
+      // Right-aligned: the line hugs the right margin, as Hebrew must.
       x = PAGE_W - MARGIN_X - opts.indent - natural;
     }
 
-    runs.forEach((run, i) => {
-      this.page.chunks.push({ text: run.text, x, y: this.y, bold, size, wordSpacing });
-      x += widths[i] + run.spaces * wordSpacing;
+    words.forEach((word, i) => {
+      this.page.chunks.push({ text: word.text, x, y: this.y, bold, size });
+      x += widths[i] + gap;
     });
   }
 
@@ -349,9 +383,10 @@ function drawLine(
   },
 ): void {
   if (!text.trim()) return;
-  const runs = directionalRuns(text);
-  const widths = runs.map((r) => opts.font.widthOfTextAtSize(r.text, opts.size));
-  const width = widths.reduce((a, b) => a + b, 0);
+  const words = displayWords(text);
+  const spaceW = opts.font.widthOfTextAtSize(' ', opts.size);
+  const widths = words.map((w) => opts.font.widthOfTextAtSize(w.text, opts.size));
+  const width = widths.reduce((a, b) => a + b, 0) + (words.length - 1) * spaceW;
 
   let x =
     opts.align === 'right'
@@ -360,15 +395,15 @@ function drawLine(
         ? (opts.left ?? MARGIN_X)
         : MARGIN_X + (CONTENT_W - width) / 2;
 
-  runs.forEach((run, i) => {
-    page.drawText(run.text, {
+  words.forEach((word, i) => {
+    page.drawText(word.text, {
       x,
       y: opts.y,
       size: opts.size,
       font: opts.font,
       color: opts.colour ?? INK,
     });
-    x += widths[i];
+    x += widths[i] + spaceW;
   });
 }
 

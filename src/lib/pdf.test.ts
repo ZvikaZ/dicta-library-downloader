@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, sampleArchive } from '../test/fixtures';
 import { pagesFromZip } from './fetchBook';
 import { buildDoc } from './parseOcr';
-import { buildPdf, directionalRuns } from './pdf';
+import { buildPdf, directionalRuns, displayWords } from './pdf';
 import { tocEntries } from './toc';
 
 const doc = buildDoc(await pagesFromZip(sampleArchive()));
@@ -47,6 +47,25 @@ describe('text direction', () => {
 
   it('does not mirror brackets in a left-to-right run', () => {
     expect(directionalRuns('Creative (Commons)')[0].text).toContain('(Commons)');
+  });
+
+  it('orders words right to left within a Hebrew run', () => {
+    // Words are placed individually so lines can be justified; the first
+    // logical word must end up rightmost, i.e. last in display order.
+    expect(displayWords('אלפי מנשה חלק א').map((w) => w.text)).toEqual([
+      'א',
+      'חלק',
+      'מנשה',
+      'אלפי',
+    ]);
+  });
+
+  it('keeps Latin words in their own order while placing them left', () => {
+    expect(displayWords('שנת Creative Commons').map((w) => w.text)).toEqual([
+      'Creative',
+      'Commons',
+      'שנת',
+    ]);
   });
 
   it('never hands pdf-lib a pre-reversed line', () => {
