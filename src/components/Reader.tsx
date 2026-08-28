@@ -97,6 +97,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [status, setStatus] = useState('');
+  const [progress, setProgress] = useState<number | null>(null);
   const [current, setCurrent] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -219,15 +220,19 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     setBusy(format);
     setMenuOpen(false);
     setStatus(`מכין ${FORMAT_LABEL[format]}…`);
+    setProgress(0);
     try {
       const { exportBook } = await import('../lib/exporter');
-      await exportBook(book, format, (stage) => {
-        setStatus(stage === 'download' ? 'מוריד…' : `מכין ${FORMAT_LABEL[format]}…`);
+      await exportBook(book, format, (stage, ratio) => {
+        setStatus(stage === 'download' ? 'מוריד את הטקסט…' : `מכין ${FORMAT_LABEL[format]}…`);
+        setProgress(ratio);
       });
       setStatus('הקובץ ירד.');
+      setProgress(null);
       window.setTimeout(() => setStatus(''), 4000);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : 'ההמרה נכשלה.');
+      setProgress(null);
     } finally {
       setBusy(null);
     }
@@ -354,7 +359,20 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
         </div>
       </header>
 
-      {status && <p className="rd-status">{status}</p>}
+      {status && (
+        <div className="rd-status">
+          <span>{status}</span>
+          {progress !== null && (
+            <span
+              className="rd-progress"
+              role="progressbar"
+              aria-valuenow={Math.round(progress * 100)}
+            >
+              <span style={{ width: `${Math.max(2, progress * 100)}%` }} />
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="rd-body">
         {showToc && entries.length > 0 && (

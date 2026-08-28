@@ -49,13 +49,18 @@ export async function exportBook(
   const doc = await getDoc(book, onProgress);
 
   if (format === 'pdf') {
-    saveBytes(await buildPdf(book, doc, await pdfFonts()), downloadName(book, 'pdf'), 'application/pdf');
+    const fonts = await pdfFonts();
+    const bytes = await buildPdf(book, doc, fonts, (ratio) => onProgress?.('build', ratio));
+    saveBytes(bytes, downloadName(book, 'pdf'), 'application/pdf');
     return;
   }
   if (format === 'epub') {
+    onProgress?.('build', 0.5);
     saveBytes(await buildEpub(book, doc), downloadName(book, 'epub'), 'application/epub+zip');
+    onProgress?.('build', 1);
     return;
   }
+  onProgress?.('build', 0.5);
   saveBytes(
     await buildDocx(book, doc),
     downloadName(book, 'docx'),

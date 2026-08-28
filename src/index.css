@@ -502,3 +502,26 @@ button, input, select { font: inherit; color: inherit; }
     color: var(--ink-faint);
   }
 }
+
+.rd-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.rd-progress {
+  display: inline-block;
+  width: min(240px, 40vw);
+  height: 5px;
+  border-radius: 3px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.rd-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
