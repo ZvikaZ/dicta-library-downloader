@@ -56,6 +56,9 @@ export function blockText(block: Block): string {
 /** Longer bold runs are emphasis on a quoted passage, not a section title. */
 const MAX_HEADING_WORDS = 12;
 
+/** A run of punctuation is OCR noise, not a section title. */
+const HAS_LETTER = /\p{L}/u;
+
 function appendSpan(spans: Span[], text: string, bold: boolean): void {
   const last = spans[spans.length - 1];
   if (last && last.bold === bold) last.text += ' ' + text;
@@ -100,21 +103,19 @@ export function buildDoc(pages: { name: string; html: string }[]): BookDoc {
         // title closes the previous paragraph rather than opening its own, so
         // requiring it to start a paragraph misses most of them.
         const breakAfter = end >= ws.length || ws[end].classes.has('marked-paragraph');
+        const runText = run.map((r) => r.text).join(' ');
         const isHeading =
-          fidelity === 'heading' ||
+          HAS_LETTER.test(runText) &&
+          (fidelity === 'heading' ||
           (breakAfter &&
             run.length <= MAX_HEADING_WORDS &&
             // At a page edge there is no following word to confirm the break,
             // so only trust it when the run also opens a paragraph.
-            (end < ws.length || startsPara || i === 0));
+            (end < ws.length || startsPara || i === 0)));
 
         if (isHeading) {
           flush();
-          blocks.push({
-            kind: 'heading',
-            page,
-            spans: [{ text: run.map((r) => r.text).join(' '), bold: false }],
-          });
+          blocks.push({ kind: 'heading', page, spans: [{ text: runText, bold: false }] });
           i = end - 1;
           continue;
         }

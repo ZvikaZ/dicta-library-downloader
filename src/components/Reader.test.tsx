@@ -160,7 +160,9 @@ describe('reader navigation and tools', () => {
     expect(items[2]).toContain('EPUB');
   });
 
-  it('remembers the contents being closed', async () => {
+  it('closes the contents on demand, but does not hold that against the next book', async () => {
+    // Persisting this was worse than useless: closing it once left the drawer
+    // silently off for every book opened afterwards, which read as a bug.
     const user = userEvent.setup();
     await open();
 
@@ -168,7 +170,22 @@ describe('reader navigation and tools', () => {
     expect(
       screen.queryByRole('navigation', { name: 'תוכן העניינים' }),
     ).not.toBeInTheDocument();
-    expect(window.localStorage.getItem('dicta:toc')).toBe('0');
+    expect(window.localStorage.getItem('dicta:toc')).toBeNull();
+  });
+
+  it('brings the current section into view in the contents', async () => {
+    // On a long contents the highlighted entry is useless if it is off-screen,
+    // which is what a reader sees after reopening part-way through a book.
+    const seen: unknown[] = [];
+    const spy = vi
+      .spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(function scrollIntoView(this: Element, arg?: unknown) {
+        seen.push(arg);
+      });
+
+    await open();
+    expect(seen).toContainEqual({ block: 'nearest' });
+    spy.mockRestore();
   });
 
   it('remembers where the reader stopped', async () => {

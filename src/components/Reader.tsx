@@ -9,7 +9,6 @@ import type { Block, Book, BookDoc, ExportFormat } from '../lib/types';
 const SIZES = [16, 18, 20, 23, 26];
 const DEFAULT_SIZE = 1;
 const SIZE_KEY = 'dicta:size';
-const TOC_KEY = 'dicta:toc';
 
 /** Wide enough for the contents to sit beside the text rather than over it. */
 function wideScreen(): boolean {
@@ -91,18 +90,17 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     const saved = Number(readStored(SIZE_KEY));
     return Number.isInteger(saved) && saved >= 0 && saved < SIZES.length ? saved : DEFAULT_SIZE;
   });
-  // Navigation is the point of this reader, so the contents starts open where
-  // there is room for it.
-  const [showToc, setShowToc] = useState(() => {
-    const saved = readStored(TOC_KEY);
-    return saved === null ? wideScreen() : saved === '1';
-  });
+  // Navigation is the point of this reader, so the contents starts open
+  // wherever there is room. Deliberately not remembered: closing it once should
+  // not silently disable it for every book opened afterwards.
+  const [showToc, setShowToc] = useState(wideScreen);
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [status, setStatus] = useState('');
   const [current, setCurrent] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLLIElement>(null);
   const restored = useRef(false);
 
   useEffect(() => {
@@ -209,7 +207,6 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
   }, [menuOpen]);
 
   useEffect(() => writeStored(SIZE_KEY, String(sizeIndex)), [sizeIndex]);
-  useEffect(() => writeStored(TOC_KEY, showToc ? '1' : '0'), [showToc]);
 
   useEffect(() => setHitIndex(0), [query]);
 
@@ -247,6 +244,13 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     }
     return id;
   }, [doc, current]);
+
+  // Keep the section you are in visible in the contents. `nearest` moves the
+  // list only when the entry is actually off-screen, so reading down the page
+  // does not drag the drawer about.
+  useEffect(() => {
+    if (showToc) activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [activeEntry, showToc]);
 
   const step = (delta: number) => {
     if (matches.length === 0) return;
@@ -365,7 +369,11 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
             </button>
             <ol>
               {entries.map((e) => (
-                <li key={e.id} className={e.id === activeEntry ? 'rd-toc-active' : undefined}>
+                <li
+                  key={e.id}
+                  ref={e.id === activeEntry ? activeRef : undefined}
+                  className={e.id === activeEntry ? 'rd-toc-active' : undefined}
+                >
                   <button
                     type="button"
                     aria-current={e.id === activeEntry ? 'true' : undefined}

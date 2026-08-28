@@ -164,6 +164,9 @@ export function App() {
       {reading && (
         <Suspense fallback={<p className="empty">טוען…</p>}>
           <Reader
+            // Keyed so each book gets a fresh reader: without it the scroll
+            // restore guard and current position carry over from the last one.
+            key={reading.id}
             book={reading}
             initialFolio={readingFolio}
             onFolio={setReadingFolio}
