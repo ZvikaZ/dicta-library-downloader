@@ -137,6 +137,29 @@ describe('reader navigation and tools', () => {
     expect(within(toc).getByText('ענין הטבעים')).toBeInTheDocument();
   });
 
+  it('keeps the contents open after jumping to a section', async () => {
+    // On a wide screen you move from section to section; closing the drawer on
+    // every click means reopening it every time.
+    const user = userEvent.setup();
+    await open();
+
+    const toc = screen.getByRole('navigation', { name: 'תוכן העניינים' });
+    await user.click(within(toc).getByText('ענין הטבעים'));
+
+    expect(screen.getByRole('navigation', { name: 'תוכן העניינים' })).toBeInTheDocument();
+  });
+
+  it('lists the download formats heaviest first', async () => {
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(screen.getByRole('button', { name: /הורדה/ }));
+    const items = screen.getAllByRole('listitem').map((li) => li.textContent);
+    expect(items[0]).toContain('PDF');
+    expect(items[1]).toContain('Word');
+    expect(items[2]).toContain('EPUB');
+  });
+
   it('remembers the contents being closed', async () => {
     const user = userEvent.setup();
     await open();

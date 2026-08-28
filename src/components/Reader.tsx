@@ -336,7 +336,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
             </button>
             {menuOpen && (
               <ul className="rd-menu">
-                {(['epub', 'docx', 'pdf'] as ExportFormat[]).map((f) => (
+                {(['pdf', 'docx', 'epub'] as ExportFormat[]).map((f) => (
                   <li key={f}>
                     <button type="button" onClick={() => download(f)}>
                       <span className="rd-menu-name">{FORMAT_LABEL[f]}</span>
@@ -374,7 +374,10 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
                         (b, bi) => b.kind === 'heading' && `h${bi}` === e.id,
                       );
                       if (at !== undefined && at >= 0) scrollToBlock(at);
-                      setShowToc(false);
+                      // Only get out of the way where the drawer covers the
+                      // text; on a wide screen you navigate section to section
+                      // and closing it every time is a nuisance.
+                      if (!wideScreen()) setShowToc(false);
                     }}
                   >
                     <span>{e.text}</span>
