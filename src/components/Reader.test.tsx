@@ -121,7 +121,11 @@ describe('searching inside the book', () => {
     await user.type(screen.getByPlaceholderText('חיפוש בספר…'), 'האש');
     await waitFor(() => expect(screen.getByText('1/2')).toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: 'הבא' }));
+    const next = screen.getByRole('button', { name: 'הבא' });
+    expect(next).toHaveTextContent('‹'); // forward is leftwards in RTL
+    expect(screen.getByRole('button', { name: 'הקודם' })).toHaveTextContent('›');
+
+    await user.click(next);
     expect(screen.getByText('2/2')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'הבא' }));
     expect(screen.getByText('1/2')).toBeInTheDocument();
@@ -223,6 +227,13 @@ describe('reader navigation and tools', () => {
     await user.click(screen.getByRole('button', { name: /הורדה/ }));
     await user.click(screen.getByRole('button', { name: /Word/ }));
     expect(await screen.findByText('ההמרה נכשלה (503)')).toBeInTheDocument();
+  });
+
+  it('points its arrows the way a right-to-left reader expects', async () => {
+    await open();
+    // Back travels rightwards in RTL; the search stepper follows the same rule,
+    // so "next" points left.
+    expect(screen.getByRole('button', { name: 'חזרה לקטלוג' })).toHaveTextContent('→');
   });
 
   it('shows which folio is on screen', async () => {

@@ -267,8 +267,9 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
   return (
     <div className="reader" role="dialog" aria-modal="true" aria-label={book.title}>
       <header className="rd-bar">
-        <button type="button" className="rd-btn" onClick={onClose} aria-label="סגירה">
-          ←
+        {/* Right-to-left interface: back points right, forward points left. */}
+        <button type="button" className="rd-btn" onClick={onClose} aria-label="חזרה לקטלוג">
+          →
         </button>
         {/* Just the title: the front matter below carries the full details,
             and this bar only has to say which book you are in. */}
@@ -294,10 +295,10 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
           {matches.length > 0 && (
             <>
               <button type="button" className="rd-btn" onClick={() => step(-1)} aria-label="הקודם">
-                ‹
+                ›
               </button>
               <button type="button" className="rd-btn" onClick={() => step(1)} aria-label="הבא">
-                ›
+                ‹
               </button>
             </>
           )}
