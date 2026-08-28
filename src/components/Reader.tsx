@@ -1,13 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDoc } from '../lib/bookCache';
 import { findMatches, segment, type Match } from '../lib/findInText';
-import { FORMAT_LABEL } from '../lib/formats';
+import { FORMAT_HINT, FORMAT_LABEL } from '../lib/formats';
 import { blockText } from '../lib/parseOcr';
 import { tocEntries } from '../lib/toc';
 import type { Block, Book, BookDoc, ExportFormat } from '../lib/types';
 
 const SIZES = [16, 18, 20, 23, 26];
 const DEFAULT_SIZE = 1;
+const SIZE_KEY = 'dicta:size';
+const TOC_KEY = 'dicta:toc';
+
+/** Wide enough for the contents to sit beside the text rather than over it. */
+function wideScreen(): boolean {
+  return typeof window.matchMedia === 'function'
+    ? window.matchMedia('(min-width: 900px)').matches
+    : true;
+}
 
 interface Props {
   book: Book;
@@ -78,9 +87,20 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
   const [ratio, setRatio] = useState(0);
   const [query, setQuery] = useState('');
   const [hitIndex, setHitIndex] = useState(0);
-  const [sizeIndex, setSizeIndex] = useState(DEFAULT_SIZE);
-  const [showToc, setShowToc] = useState(false);
+  const [sizeIndex, setSizeIndex] = useState(() => {
+    const saved = Number(readStored(SIZE_KEY));
+    return Number.isInteger(saved) && saved >= 0 && saved < SIZES.length ? saved : DEFAULT_SIZE;
+  });
+  // Navigation is the point of this reader, so the contents starts open where
+  // there is room for it.
+  const [showToc, setShowToc] = useState(() => {
+    const saved = readStored(TOC_KEY);
+    return saved === null ? wideScreen() : saved === '1';
+  });
   const [busy, setBusy] = useState<ExportFormat | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [status, setStatus] = useState('');
+  const [current, setCurrent] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
@@ -97,7 +117,12 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        setMenuOpen((open) => {
+          if (!open) onClose();
+          return false;
+        });
+      }
       if (e.key === '/' && e.target === document.body) {
         e.preventDefault();
         document.getElementById('rd-search')?.focus();
@@ -156,7 +181,9 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
         const blocks = el.querySelectorAll<HTMLElement>('[data-block]');
         for (const node of blocks) {
           if (node.offsetTop + node.offsetHeight >= mid) {
-            writeStored(positionKey(book.id), node.dataset.block ?? '0');
+            const index = Number(node.dataset.block ?? 0);
+            writeStored(positionKey(book.id), String(index));
+            setCurrent(index);
             const folio = Number(node.dataset.folio);
             if (Number.isFinite(folio)) onFolio?.(folio);
             break;
@@ -171,6 +198,19 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     };
   }, [doc, book.id, onFolio]);
 
+  // Dismiss the download menu the way people expect: click anywhere else.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.rd-menu-wrap')) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [menuOpen]);
+
+  useEffect(() => writeStored(SIZE_KEY, String(sizeIndex)), [sizeIndex]);
+  useEffect(() => writeStored(TOC_KEY, showToc ? '1' : '0'), [showToc]);
+
   useEffect(() => setHitIndex(0), [query]);
 
   useEffect(() => {
@@ -180,15 +220,33 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
   const download = async (format: ExportFormat) => {
     if (!doc) return;
     setBusy(format);
+    setMenuOpen(false);
+    setStatus(`מכין ${FORMAT_LABEL[format]}…`);
     try {
       const { exportBook } = await import('../lib/exporter');
-      await exportBook(book, format);
+      await exportBook(book, format, (stage) => {
+        setStatus(stage === 'download' ? 'מוריד…' : `מכין ${FORMAT_LABEL[format]}…`);
+      });
+      setStatus('הקובץ ירד.');
+      window.setTimeout(() => setStatus(''), 4000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'ההמרה נכשלה.');
+      setStatus(e instanceof Error ? e.message : 'ההמרה נכשלה.');
     } finally {
       setBusy(null);
     }
   };
+
+  const currentFolio = doc?.blocks[current]?.page;
+
+  // The section the reader is inside: the last heading at or above this block.
+  const activeEntry = useMemo(() => {
+    if (!doc) return null;
+    let id: string | null = null;
+    for (let i = 0; i <= current && i < doc.blocks.length; i++) {
+      if (doc.blocks[i].kind === 'heading') id = `h${i}`;
+    }
+    return id;
+  }, [doc, current]);
 
   const step = (delta: number) => {
     if (matches.length === 0) return;
@@ -207,6 +265,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
             and this bar only has to say which book you are in. */}
         <div className="rd-title">
           <strong>{book.title}</strong>
+          {currentFolio !== undefined && <span className="rd-at">דף {currentFolio}</span>}
         </div>
 
         <div className="rd-search">
@@ -253,32 +312,63 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
             א+
           </button>
           {entries.length > 0 && (
-            <button type="button" className="rd-btn" onClick={() => setShowToc((v) => !v)}>
+            <button
+              type="button"
+              className="rd-btn"
+              onClick={() => setShowToc((v) => !v)}
+              aria-pressed={showToc}
+            >
               תוכן
             </button>
           )}
-          {(['epub', 'docx', 'pdf'] as ExportFormat[]).map((f) => (
+
+          {/* One button rather than three: downloading is the rarest thing you
+              do while reading, and it was crowding the controls you use most. */}
+          <div className="rd-menu-wrap">
             <button
               type="button"
-              key={f}
-              className="rd-btn"
+              className="rd-btn rd-download"
               disabled={busy !== null || !doc}
-              onClick={() => download(f)}
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
             >
-              {busy === f ? '…' : FORMAT_LABEL[f]}
+              {busy ? '…' : 'הורדה ▾'}
             </button>
-          ))}
+            {menuOpen && (
+              <ul className="rd-menu">
+                {(['epub', 'docx', 'pdf'] as ExportFormat[]).map((f) => (
+                  <li key={f}>
+                    <button type="button" onClick={() => download(f)}>
+                      <span className="rd-menu-name">{FORMAT_LABEL[f]}</span>
+                      <span className="rd-menu-hint">{FORMAT_HINT[f]}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </header>
+
+      {status && <p className="rd-status">{status}</p>}
 
       <div className="rd-body">
         {showToc && entries.length > 0 && (
           <nav className="rd-toc" aria-label="תוכן העניינים">
+            <button
+              type="button"
+              className="rd-toc-close"
+              onClick={() => setShowToc(false)}
+              aria-label="סגירת התוכן"
+            >
+              ×
+            </button>
             <ol>
               {entries.map((e) => (
-                <li key={e.id}>
+                <li key={e.id} className={e.id === activeEntry ? 'rd-toc-active' : undefined}>
                   <button
                     type="button"
+                    aria-current={e.id === activeEntry ? 'true' : undefined}
                     onClick={() => {
                       const at = doc?.blocks.findIndex(
                         (b, bi) => b.kind === 'heading' && `h${bi}` === e.id,

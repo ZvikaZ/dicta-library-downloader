@@ -428,3 +428,77 @@ button, input, select { font: inherit; color: inherit; }
   color: var(--ink-faint);
   margin: 0 0 10px;
 }
+
+.rd-at {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.rd-menu-wrap { position: relative; }
+
+.rd-download { font-weight: 600; color: var(--accent); border-color: var(--accent); }
+
+.rd-menu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 6px);
+  z-index: 3;
+  list-style: none;
+  margin: 0;
+  padding: 5px;
+  min-width: 210px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 18%);
+}
+
+.rd-menu button {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  text-align: start;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.rd-menu button:hover { background: var(--accent-soft); }
+.rd-menu-name { font-weight: 600; font-size: 13.5px; }
+.rd-menu-hint { font-size: 11.5px; color: var(--ink-faint); }
+
+.rd-status {
+  margin: 0;
+  padding: 7px 16px;
+  background: var(--accent-soft);
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-align: center;
+}
+
+.rd-toc-close { display: none; }
+
+.rd-toc-active > button {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (width <= 780px) {
+  .rd-toc { box-shadow: -12px 0 30px rgb(0 0 0 / 18%); }
+
+  .rd-toc-close {
+    display: block;
+    margin-inline-start: auto;
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    padding: 2px 8px;
+    cursor: pointer;
+    color: var(--ink-faint);
+  }
+}

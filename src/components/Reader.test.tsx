@@ -129,14 +129,23 @@ describe('searching inside the book', () => {
 });
 
 describe('reader navigation and tools', () => {
-  it('lists the detected sections in a contents drawer', async () => {
+  it('shows the contents beside the text on a wide screen, without asking', async () => {
+    await open();
+    // Navigation is the reason to use this reader, so it starts open.
+    const toc = screen.getByRole('navigation', { name: 'תוכן העניינים' });
+    expect(within(toc).getByText('ענין מהות האש')).toBeInTheDocument();
+    expect(within(toc).getByText('ענין הטבעים')).toBeInTheDocument();
+  });
+
+  it('remembers the contents being closed', async () => {
     const user = userEvent.setup();
     await open();
 
     await user.click(screen.getByRole('button', { name: 'תוכן' }));
-    const toc = screen.getByRole('navigation', { name: 'תוכן העניינים' });
-    expect(within(toc).getAllByRole('button')).toHaveLength(2);
-    expect(within(toc).getByText('ענין הטבעים')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'תוכן העניינים' }),
+    ).not.toBeInTheDocument();
+    expect(window.localStorage.getItem('dicta:toc')).toBe('0');
   });
 
   it('remembers where the reader stopped', async () => {
@@ -146,12 +155,38 @@ describe('reader navigation and tools', () => {
     expect(window.localStorage.getItem(`dicta:pos:${alfeiMenashe.id}`)).toBe('2');
   });
 
-  it('offers the downloads without leaving the text', async () => {
+  it('offers the downloads behind one menu, without leaving the text', async () => {
     const user = userEvent.setup();
     await open();
 
-    await user.click(screen.getByRole('button', { name: 'EPUB' }));
+    await user.click(screen.getByRole('button', { name: /הורדה/ }));
+    await user.click(screen.getByRole('button', { name: /EPUB/ }));
+
     await waitFor(() => expect(exportBook).toHaveBeenCalled());
     expect(exportBook.mock.calls[0][1]).toBe('epub');
+  });
+
+  it('says what it is doing while a download is prepared', async () => {
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(screen.getByRole('button', { name: /הורדה/ }));
+    await user.click(screen.getByRole('button', { name: /PDF/ }));
+    expect(await screen.findByText('הקובץ ירד.')).toBeInTheDocument();
+  });
+
+  it('reports a failed download rather than failing silently', async () => {
+    exportBook.mockRejectedValue(new Error('ההמרה נכשלה (503)'));
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(screen.getByRole('button', { name: /הורדה/ }));
+    await user.click(screen.getByRole('button', { name: /Word/ }));
+    expect(await screen.findByText('ההמרה נכשלה (503)')).toBeInTheDocument();
+  });
+
+  it('shows which folio is on screen', async () => {
+    await open();
+    expect(screen.getByText(/^דף /)).toBeInTheDocument();
   });
 });

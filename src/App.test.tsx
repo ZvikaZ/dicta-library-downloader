@@ -243,50 +243,13 @@ describe('book detail and download', () => {
     await renderApp();
 
     await user.click(screen.getByText('אלפי מנשה חלק א'));
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: 'EPUB' }));
+    await screen.findByText('פתח דבר לספר');
+    await user.click(screen.getByRole('button', { name: /הורדה/ }));
+    await user.click(screen.getByRole('button', { name: /EPUB/ }));
 
     await waitFor(() => expect(exportBook).toHaveBeenCalledTimes(1));
     expect(exportBook.mock.calls[0][0].id).toBe('alfeimenashe');
     expect(exportBook.mock.calls[0][1]).toBe('epub');
-  });
-
-  it('offers Word and PDF as well as EPUB', async () => {
-    const user = userEvent.setup();
-    await renderApp();
-
-    await user.click(screen.getByText('אלפי מנשה חלק א'));
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: 'Word' }));
-    await waitFor(() => expect(exportBook.mock.calls[0][1]).toBe('docx'));
-
-    await user.click(within(dialog).getByRole('button', { name: 'PDF' }));
-    await waitFor(() => expect(exportBook.mock.calls[1][1]).toBe('pdf'));
-  });
-
-  it('surfaces the reason an export failed', async () => {
-    exportBook.mockRejectedValue(new Error('הורדת הספר נכשלה (503)'));
-    const user = userEvent.setup();
-    await renderApp();
-
-    await user.click(screen.getByText('אלפי מנשה חלק א'));
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: 'EPUB' }));
-
-    expect(await within(dialog).findByText('הורדת הספר נכשלה (503)')).toBeInTheDocument();
-  });
-
-  it('re-enables the buttons after a failure so the reader can retry', async () => {
-    exportBook.mockRejectedValue(new Error('נכשל'));
-    const user = userEvent.setup();
-    await renderApp();
-
-    await user.click(screen.getByText('אלפי מנשה חלק א'));
-    const dialog = await screen.findByRole('dialog');
-    const epub = within(dialog).getByRole('button', { name: 'EPUB' });
-    await user.click(epub);
-
-    await waitFor(() => expect(epub).toBeEnabled());
   });
 
   it('closes on Escape', async () => {
