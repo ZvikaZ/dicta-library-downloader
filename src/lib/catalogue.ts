@@ -1,8 +1,17 @@
 import { canonicalCategory, categoryOrder } from './categories';
 import { providerLabel } from './providers/registry';
-import type { Book, Catalogue, Facet, Facets } from './types';
+import type { Book, BookKind, Catalogue, Facet, Facets } from './types';
 
 export { providerLabel };
+
+export const KIND_LABEL: Record<BookKind, string> = {
+  book: 'ספרים',
+  commentary: 'פירושים',
+};
+
+export function kindLabel(kind: BookKind): string {
+  return KIND_LABEL[kind] ?? KIND_LABEL.book;
+}
 
 function tally(books: Book[], of: (b: Book) => string): Facet[] {
   const counts = new Map<string, number>();
@@ -41,6 +50,10 @@ export function mergeCatalogues(parts: Catalogue[]): Catalogue {
     ),
     subcategories: tally(books, (b) => b.subcategory),
     sources: tally(books, (b) => providerLabel(b.provider)),
+    // Ordered book-then-commentary, so the default sits first.
+    kinds: (['book', 'commentary'] as BookKind[])
+      .map((k) => ({ name: kindLabel(k), count: books.filter((b) => b.kind === k).length }))
+      .filter((f) => f.count > 0),
     total: books.length,
     // The oldest refresh, so the date shown is one every book is at least as
     // new as rather than the most flattering of the two.

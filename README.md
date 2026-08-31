@@ -1,9 +1,9 @@
 # מדף — ממשק קריאה והורדה
 
-Read and search **2,098 Hebrew books** from two libraries — the
-[Dicta Library](https://library.dicta.org.il) (1,007) and [Sefaria](https://www.sefaria.org)
-(1,091) — and download any of them as **EPUB**, **Word (.docx)**, or **PDF**, generated entirely
-in the browser with no server. Each file gets a table of contents, citable references, and proper
+Read and search **2,098 Hebrew books** and **5,416 commentaries** from two libraries — the
+[Dicta Library](https://library.dicta.org.il) and [Sefaria](https://www.sefaria.org) — and
+download any of them as **EPUB**, **Word (.docx)**, or **PDF**, generated entirely in the browser
+with no server. A commentary opens as a book with the text it comments on woven into it. Each file gets a table of contents, citable references, and proper
 right-to-left Hebrew typesetting.
 
 > All texts are the work of their libraries. **[Dicta — the Israel Center for Text
@@ -89,6 +89,25 @@ stating: **a span boundary only ever falls where the source had whitespace.** Ev
 downstream rejoins spans with a single space, so splitting `<big>בְּ</big>רֵאשִׁית` at the tag
 would render `בְּ רֵאשִׁית`. Where emphasis changes mid-word the word wins.
 
+### A commentary is a book, with the text it comments on inside it
+
+Sefaria's 5,416 מפרשים are catalogued too, and open as books in their own right —
+מלבי"ם על שיר השירים is a book, not a setting on שיר השירים. Opening one fetches the
+commentary *and* the work it comments on, and weaves them: the verse, then the
+comments on it, the way a printed commentary volume sets the page.
+
+The join needs nothing new. A commentary's structure is its base text's plus one
+level, so where a verse is `ח:ד` its comments are `ח:ד:א`, `ח:ד:ב` — the citation
+label already built for the margin *is* the join key, and a comment belongs under
+the block whose label is its own with the last address dropped. Sefaria's
+`base_text_mapping` is not consulted; it is absent on 2,269 of them anyway. A
+comment on a verse the base edition lacks is appended rather than dropped.
+
+Commentaries outnumber books three to one and are mostly per-tractate repeats,
+so browse defaults to ספרים and a **סוג** facet opts into פירושים. They are always
+searchable. None of them cost a per-title request: `heCommentator`,
+`base_text_titles` and `heTitle` are all in the bulk index already.
+
 ### Attribution is per-edition
 
 Dicta releases its whole library under one licence, so its credit is a constant. A Sefaria *work*
@@ -97,6 +116,18 @@ copyright in another. So the loader reads `license`, `versionTitle` and `version
 version it actually fetched, carries them on the `BookDoc`, and every colophon is rendered from
 that. An edition naming a rights holder (`Copyright: Schocken`) can be read here but its download
 is refused.
+
+A woven commentary draws on two sources at once, often on different terms — the Malbim is
+נחלת הכלל, the Song of Songs beneath it is CC BY-SA. Both are credited, and the **stricter**
+licence governs the file: one restricted part makes the whole export refuse.
+
+### Cantillation
+
+Frank Ruhl Libre has every Hebrew vowel, meteg included, and **not one** of the 31 te'amim. A
+glyph the font lacks is a box, so a verse of Tanakh reached the PDF as `לְרֵ □יחַ □שְׁמָנֶ □יךָ`.
+The exports strip the accents (and three other marks the font also lacks), which keeps the text
+fully vocalised and loses only the chant — the trade a printed commentary volume usually makes.
+The reader keeps them: a browser falls back to a system font per missing glyph.
 
 ### Typography
 
@@ -141,7 +172,7 @@ is needed.
 ```bash
 npm install        # .npmrc sets legacy-peer-deps (npm 10.9 trips over vitest's peer set)
 npm run dev        # local dev server
-npm test           # 170 tests: both parsers, EPUB/DOCX/PDF output, bidi, licensing, UI
+npm test           # 184 tests: both parsers, EPUB/DOCX/PDF output, bidi, licensing, UI
 npm run build      # production build into dist/
 ```
 

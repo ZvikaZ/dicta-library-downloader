@@ -73,11 +73,8 @@ function BlockView({ block, hits }: { block: Block; hits: Match[] }) {
     offset = to;
   });
 
-  return block.kind === 'heading' ? (
-    <h2 className="rd-heading">{children}</h2>
-  ) : (
-    <p className="rd-para">{children}</p>
-  );
+  if (block.kind === 'heading') return <h2 className="rd-heading">{children}</h2>;
+  return <p className={block.layer ? 'rd-para rd-commentary' : 'rd-para'}>{children}</p>;
 }
 
 export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
@@ -464,6 +461,15 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
                 );
               })}
               <p className="rd-colophon">
+                {doc.alsoFrom?.length ? (
+                  <>
+                    הספר מורכב מ{doc.alsoFrom.length + 1} מקורות:{' '}
+                    {[doc.attribution, ...doc.alsoFrom]
+                      .map((a) => `${a.provenance} (${a.license.name})`)
+                      .join(' · ')}
+                    <br />
+                  </>
+                ) : null}
                 הטקסט באדיבות{' '}
                 <a href={doc.attribution.libraryUrl} target="_blank" rel="noreferrer">
                   {doc.attribution.library}

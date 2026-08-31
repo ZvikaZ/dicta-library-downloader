@@ -62,6 +62,15 @@ export function Filters({ facets, subcategories, query, onChange }: Props) {
         />
       </div>
 
+      {facets.kinds && facets.kinds.length > 1 && (
+        <FacetGroup
+          title="סוג"
+          items={facets.kinds}
+          selected={query.kinds}
+          onToggle={(name) => onChange({ ...query, kinds: toggle(query.kinds, name) })}
+        />
+      )}
+
       {facets.sources && facets.sources.length > 1 && (
         <FacetGroup
           title="מקור"

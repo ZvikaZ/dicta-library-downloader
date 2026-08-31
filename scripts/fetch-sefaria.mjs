@@ -35,13 +35,22 @@ function leaves(node, out = []) {
 }
 
 /**
- * 6,604 titles, but 5,460 of them are per-tractate commentaries
- * (`Rashi on Berakhot`) and targumim, which are not books in the sense this
- * catalogue means. `dependence` marks those; `hidden` marks entries Sefaria
- * itself keeps out of its table of contents.
+ * `dependence` marks a work written on another one — a commentary or a targum;
+ * `hidden` marks entries Sefaria keeps out of its own table of contents.
+ *
+ * Both kinds are catalogued, but they are not the same object. A standalone
+ * work needs its author and date fetched per title; a commentary carries
+ * everything useful in the bulk index already, and is read woven into the text
+ * it comments on, so it also needs the ref of that text.
  */
 function isStandalone(entry) {
   return !entry.dependence && !entry.hidden;
+}
+
+function isCommentary(entry) {
+  // Without a base text there is nothing to weave it into, so it would be a
+  // book of disembodied comments. 73 entries are in that state.
+  return Boolean(entry.dependence) && !entry.hidden && Boolean(entry.base_text_titles?.length);
 }
 
 /** Sefaria returns 504s on cold refs often enough to matter over 1,000 calls. */
@@ -93,8 +102,12 @@ function placeEn(index) {
 }
 
 const catalogue = await getJson(`${API}/index/`);
-const entries = leaves(catalogue).filter(isStandalone);
-console.log(`${entries.length} standalone works of ${leaves(catalogue).length} titles`);
+const all = leaves(catalogue);
+const entries = all.filter(isStandalone);
+const commentaries = all.filter(isCommentary);
+console.log(
+  `${all.length} titles: ${entries.length} standalone works, ${commentaries.length} commentaries`,
+);
 
 // The index tree carries no author, year or place — that lives only on the
 // per-title endpoint, so this is one request per book.
@@ -138,6 +151,7 @@ const books = entries.map((entry, i) => {
   return {
     id: `sefaria:${entry.title}`,
     provider: 'sefaria',
+    kind: 'book',
     // The API ref, which is what the loader asks for.
     ref: entry.title,
     sourceUrl: `https://www.sefaria.org/${encodeURIComponent(entry.title.replace(/ /g, '_'))}`,
@@ -159,6 +173,43 @@ const books = entries.map((entry, i) => {
     ),
   };
 });
+
+/**
+ * A commentary is built entirely from the bulk index: `heCommentator` is its
+ * author, and its category comes from the same English name the standalone
+ * works translate, so no per-title request is needed for any of the 5,400.
+ */
+const commentaryBooks = commentaries.map((entry) => {
+  const cats = entry.categories ?? [];
+  const author = entry.heCommentator || entry.heCollectiveTitle || null;
+  return {
+    id: `sefaria:${entry.title}`,
+    provider: 'sefaria',
+    kind: 'commentary',
+    ref: entry.title,
+    // The work it comments on, woven into it when the book is opened.
+    baseRef: entry.base_text_titles[0],
+    sourceUrl: `https://www.sefaria.org/${encodeURIComponent(entry.title.replace(/ /g, '_'))}`,
+    title: entry.heTitle,
+    titleEn: entry.title,
+    author,
+    authorEn: entry.commentator || entry.collectiveTitle || null,
+    category: heByEn.get(cats[0]) ?? cats[0] ?? '',
+    categoryEn: cats[0] ?? '',
+    // The commentator, which is how anyone browsing a shelf of commentaries
+    // actually narrows it — far more use than "Acharonim on Tanakh".
+    subcategory: entry.heCollectiveTitle || entry.heCommentator || '',
+    subcategoryEn: entry.collectiveTitle || entry.commentator || '',
+    place: null,
+    placeEn: null,
+    year: null,
+    source: 'Sefaria',
+    reviewed: true,
+    key: normalise([entry.heTitle, entry.title, author, entry.commentator].join(' ')),
+  };
+});
+
+books.push(...commentaryBooks);
 
 const byCount = (a, b) => b[1] - a[1];
 const tally = (fn) => {
@@ -184,7 +235,8 @@ await writeFile('public/books-sefaria.json', JSON.stringify({ facets, books }));
 
 const have = (fn) => books.filter(fn).length;
 console.log(
-  `Wrote ${books.length} books · ${facets.categories.length} categories · ` +
+  `Wrote ${books.length} entries (${entries.length} books, ${commentaryBooks.length} ` +
+    `commentaries) · ${facets.categories.length} categories · ` +
     `${facets.subcategories.length} subcategories · years ${facets.yearRange.join('–')}`,
 );
 console.log(

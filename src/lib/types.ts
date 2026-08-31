@@ -2,10 +2,19 @@ import type { Provider } from './providers/registry';
 
 export type { Provider };
 
+/**
+ * A book stands on its own; a commentary is written on one and is read woven
+ * into it, so it carries the ref of the text it comments on.
+ */
+export type BookKind = 'book' | 'commentary';
+
 export interface Book {
   /** Globally unique across providers, e.g. `dicta:alfeimenashe`. */
   id: string;
   provider: Provider;
+  kind: BookKind;
+  /** For a commentary, the work it comments on. */
+  baseRef?: string;
   /**
    * Where the provider's loader finds the text: a Dicta archive URL, or a
    * Sefaria ref. Opaque to everything except that provider.
@@ -39,6 +48,8 @@ export interface Facets {
   subcategories: Facet[];
   /** Which library each book came from. Absent from a single-library file. */
   sources?: Facet[];
+  /** Books versus commentaries. Absent from a single-library file. */
+  kinds?: Facet[];
   total: number;
   fetchedAt: string;
 }
@@ -72,6 +83,12 @@ export interface Block {
    * like `ג׳:י״ב`. Defaults to the slot itself.
    */
   label?: string;
+  /**
+   * Set on a block that comments on the one above it rather than continuing
+   * the text. Carries the source it came from, so the reader can indent it and
+   * the exporters can set it apart.
+   */
+  layer?: string;
 }
 
 /** What a block's citation shows in the margin, contents and running head. */
@@ -86,8 +103,14 @@ export interface BookDoc {
   blocks: Block[];
   pageCount: number;
   fidelity: Fidelity;
-  /** Who to credit and under what licence — set by the provider that loaded it. */
+  /**
+   * Who to credit and under what licence — set by the provider that loaded it.
+   * A commentary woven together with the text it comments on draws on two
+   * sources, often licensed differently, and both must be credited.
+   */
   attribution: Attribution;
+  /** Further sources this book was built from, credited alongside the first. */
+  alsoFrom?: Attribution[];
   /**
    * The word that introduces a citation in running text — `דף` for a scanned
    * folio. A Sefaria reference names its own units, so it has none.

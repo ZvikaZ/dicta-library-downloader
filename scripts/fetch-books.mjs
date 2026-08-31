@@ -32,6 +32,9 @@ const books = raw.map((b) => ({
   // Prefixed so ids stay unique once a second library is in the catalogue.
   id: `dicta:${b.fileName}`,
   provider: 'dicta',
+  // Dicta's commentaries are scans of printed volumes with no alignment data,
+  // so they are read as books in their own right, not woven into a base text.
+  kind: 'book',
   title: b.displayName,
   titleEn: b.displayNameEnglish ?? null,
   author: b.author?.trim() || null,

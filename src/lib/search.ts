@@ -1,3 +1,4 @@
+import { KIND_LABEL, kindLabel } from './catalogue';
 import { providerLabel } from './providers/registry';
 import type { Book } from './types';
 
@@ -20,6 +21,8 @@ export interface Query {
   categories: string[];
   subcategories: string[];
   sources: string[];
+  /** Book kinds to show. Defaults to books alone — see EMPTY_QUERY. */
+  kinds: string[];
 }
 
 export const EMPTY_QUERY: Query = {
@@ -27,6 +30,9 @@ export const EMPTY_QUERY: Query = {
   categories: [],
   subcategories: [],
   sources: [],
+  // Commentaries outnumber books three to one, and most are per-tractate
+  // repeats, so browsing starts with books and opts into the rest.
+  kinds: [KIND_LABEL.book],
 };
 
 export function isActive(q: Query): boolean {
@@ -34,7 +40,9 @@ export function isActive(q: Query): boolean {
     q.text.trim() !== '' ||
     q.categories.length > 0 ||
     q.subcategories.length > 0 ||
-    q.sources.length > 0
+    q.sources.length > 0 ||
+    // Only counts as filtering once it differs from the default.
+    q.kinds.join('|') !== EMPTY_QUERY.kinds.join('|')
   );
 }
 
@@ -50,11 +58,13 @@ export function filterBooks(books: Book[], q: Query): Book[] {
   const cats = new Set(q.categories);
   const subs = new Set(q.subcategories);
   const srcs = new Set(q.sources);
+  const kinds = new Set(q.kinds);
 
   return books.filter((b) => {
     if (cats.size && !cats.has(b.category)) return false;
     if (subs.size && !subs.has(b.subcategory)) return false;
     if (srcs.size && !srcs.has(providerLabel(b.provider))) return false;
+    if (kinds.size && !kinds.has(kindLabel(b.kind))) return false;
     return terms.every((t) => b.key.includes(t));
   });
 }
@@ -83,6 +93,7 @@ export function queryToParams(q: Query): URLSearchParams {
   if (q.categories.length) p.set('cat', q.categories.join('|'));
   if (q.subcategories.length) p.set('sub', q.subcategories.join('|'));
   if (q.sources.length) p.set('src', q.sources.join('|'));
+  if (q.kinds.join('|') !== EMPTY_QUERY.kinds.join('|')) p.set('kind', q.kinds.join('|'));
   return p;
 }
 
@@ -92,5 +103,6 @@ export function paramsToQuery(p: URLSearchParams): Query {
     categories: p.get('cat')?.split('|').filter(Boolean) ?? [],
     subcategories: p.get('sub')?.split('|').filter(Boolean) ?? [],
     sources: p.get('src')?.split('|').filter(Boolean) ?? [],
+    kinds: p.get('kind')?.split('|').filter(Boolean) ?? EMPTY_QUERY.kinds,
   };
 }

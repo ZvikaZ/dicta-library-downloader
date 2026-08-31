@@ -1,5 +1,5 @@
-import { sefariaAttribution } from '../attribution';
-import { buildSefariaDoc, type TextNode } from '../sefariaDoc';
+import { combinedLicense, sefariaAttribution } from '../attribution';
+import { buildSefariaDoc, weaveCommentary, type TextNode } from '../sefariaDoc';
 import type { BookDoc } from '../types';
 import type { LoadBook } from './types';
 
@@ -83,10 +83,33 @@ async function fetchNode(ref: string, heTitle?: string): Promise<TextNode | null
  * cheap path is tried first and the schema is only fetched if it fails.
  */
 export const loadBook: LoadBook = async (book, onProgress): Promise<BookDoc> => {
+  const doc = await loadText(book.ref, onProgress);
+
+  // A commentary is read woven into the work it comments on, the way a printed
+  // commentary sets the verse above the comment.
+  if (book.kind === 'commentary' && book.baseRef) {
+    const base = await loadText(book.baseRef);
+    return {
+      ...doc,
+      blocks: weaveCommentary(base, doc),
+      // The commentary leads — it is its book — but both sources are credited,
+      // and the stricter of the two licences governs the whole.
+      alsoFrom: [base.attribution],
+      attribution: {
+        ...doc.attribution,
+        license: combinedLicense([doc.attribution, base.attribution]),
+      },
+    };
+  }
+
+  return doc;
+};
+
+async function loadText(ref: string, onProgress?: Parameters<LoadBook>[1]): Promise<BookDoc> {
   onProgress?.('download', 0.1);
 
   const whole = await fetch(
-    `${API}/v3/texts/${encodeURIComponent(book.ref)}?version=source`,
+    `${API}/v3/texts/${encodeURIComponent(ref)}?version=source`,
   ).then((r) => r.json() as Promise<TextResponse>);
 
   let nodes: TextNode[];
@@ -106,7 +129,7 @@ export const loadBook: LoadBook = async (book, onProgress): Promise<BookDoc> => 
   } else {
     // Complex book: walk the schema and pull each leaf.
     const index = await getJson<{ schema: SchemaNode }>(
-      `${API}/v2/raw/index/${encodeURIComponent(book.ref)}`,
+      `${API}/v2/raw/index/${encodeURIComponent(ref)}`,
     );
     const refs = leafRefs(index.schema);
     if (refs.length === 0) throw new Error('לא נמצא טקסט לספר הזה');
@@ -137,4 +160,4 @@ export const loadBook: LoadBook = async (book, onProgress): Promise<BookDoc> => 
 
   onProgress?.('build', 1);
   return doc;
-};
+}

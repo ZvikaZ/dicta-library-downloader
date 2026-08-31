@@ -13,6 +13,7 @@ import {
   Paragraph,
   TextRun,
 } from 'docx';
+import { stripUnsupportedMarks } from './hebrew';
 import { shouldIncludeToc, tocEntries } from './toc';
 import { blockLabel, type Book, type BookDoc, type Span } from './types';
 
@@ -34,7 +35,7 @@ const SMALL_SIZE = 18;
 // left-to-right and strands the punctuation on the wrong side of the line.
 function rtl(
   content: string | Span[],
-  opts: { heading?: boolean; small?: boolean; indent?: boolean } = {},
+  opts: { heading?: boolean; small?: boolean; indent?: boolean; inset?: boolean } = {},
 ): Paragraph {
   const spans: Span[] = typeof content === 'string' ? [{ text: content, bold: false }] : content;
   const size = opts.heading ? HEAD_SIZE : opts.small ? SMALL_SIZE : BODY_SIZE;
@@ -49,12 +50,17 @@ function rtl(
     spacing: opts.heading
       ? { before: 320, after: 140, line: 280, lineRule: LineRuleType.AUTO }
       : { after: 0, line: 320, lineRule: LineRuleType.AUTO },
-    indent: opts.indent ? { firstLine: 340 } : undefined,
+    indent: opts.inset
+      ? { start: 480, firstLine: opts.indent ? 340 : 0 }
+      : opts.indent
+        ? { firstLine: 340 }
+        : undefined,
     children: spans.map(
       (s, i) =>
         new TextRun({
           // Runs were split on style, so restore the separating space.
-          text: i === 0 ? s.text : ' ' + s.text,
+          // FrankRuehl has no cantillation glyphs either; see ./hebrew.
+          text: stripUnsupportedMarks(i === 0 ? s.text : ' ' + s.text),
           rightToLeft: true,
           font: FONT,
           size,
@@ -128,6 +134,9 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
   front.push(
     rtl(`${book.category} · ${book.subcategory} · ${doc.pageCount} עמודים`, { small: true }),
     rtl(doc.attribution.provenance, { small: true }),
+    ...(doc.alsoFrom ?? []).map((a) =>
+      rtl(`${a.provenance} — ${a.library}, ${a.license.name}`, { small: true }),
+    ),
     rtl(
       `הטקסט באדיבות ${doc.attribution.library} (${doc.attribution.libraryUrl}) — ` +
         doc.attribution.about,
@@ -177,7 +186,15 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
       seenFolios.add(b.page);
       body.push(folioMark(blockLabel(b)));
     }
-    body.push(rtl(b.spans, { heading: b.kind === 'heading', indent: b.kind === 'para' }));
+    body.push(
+      rtl(b.spans, {
+        heading: b.kind === 'heading',
+        indent: b.kind === 'para',
+        // Commentary is set smaller than the text it comments on.
+        small: Boolean(b.layer),
+        inset: Boolean(b.layer),
+      }),
+    );
   }
 
   const document = new Document({

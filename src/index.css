@@ -550,3 +550,12 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .rd-step { padding: 5px 9px; font-size: 12.5px; }
+
+/* A commentary block, set in and smaller than the text it comments on. */
+.rd-commentary {
+  font-size: 0.88em;
+  margin-inline-start: 1.6em;
+  border-inline-start: 2px solid var(--rule);
+  padding-inline-start: 0.8em;
+  color: var(--ink-soft);
+}

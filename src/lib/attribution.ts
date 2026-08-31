@@ -59,6 +59,20 @@ export function licenseFor(raw: string | null | undefined): License {
   return { name: key, exportable: true };
 }
 
+/**
+ * The terms a book made of several sources must be offered under: every source
+ * credited, and the strictest rule among them winning. One un-exportable part
+ * makes the whole un-exportable.
+ */
+export function combinedLicense(parts: Attribution[]): License {
+  const blocked = parts.find((p) => !p.license.exportable);
+  if (blocked) return blocked.license;
+  const named = parts.map((p) => p.license.name);
+  const distinct = [...new Set(named)];
+  if (distinct.length === 1) return parts[0].license;
+  return { name: distinct.join(' · '), exportable: true };
+}
+
 export const DICTA_SITE = 'https://library.dicta.org.il';
 export const DICTA_REPO =
   'https://github.com/Dicta-Israel-Center-for-Text-Analysis/Dicta-Library-Download';

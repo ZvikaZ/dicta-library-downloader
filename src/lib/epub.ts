@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { FRANK_RUHL_LICENSE, frankRuhlBytes } from '../assets/fonts/frankRuhl';
+import { stripUnsupportedMarks } from './hebrew';
 import { blockText } from './parseOcr';
 import { headingId, shouldIncludeToc, tocEntries, type TocEntry } from './toc';
 import { blockLabel, type Block, type Book, type BookDoc } from './types';
@@ -87,6 +88,8 @@ h1, h2 { text-align: center; line-height: 1.4; page-break-after: avoid; }
 h1 { font-size: 1.35em; margin: 1.2em 0 0.8em; }
 h2 { font-size: 1.1em; margin: 1.5em 0 0.6em; }
 p { margin: 0 0 0.65em; text-indent: 1.2em; }
+/* Commentary on the text above it: smaller and set in, as it is in print. */
+p.commentary { font-size: 0.88em; margin-inline-end: 1.4em; line-height: 1.5; }
 p:first-of-type { text-indent: 0; }
 .pagebreak {
   float: left;
@@ -136,10 +139,19 @@ function renderChapter(
       }
       // Bold that is not a section title is real emphasis in the source and is
       // preserved as <strong>, matching how Dicta renders the page.
+      // The embedded font has no cantillation glyphs; see ./hebrew.
       const inner = b.spans
-        .map((sp) => (sp.bold ? `<strong>${esc(sp.text)}</strong>` : esc(sp.text)))
+        .map((sp) => {
+          const t = esc(stripUnsupportedMarks(sp.text));
+          return sp.bold ? `<strong>${t}</strong>` : t;
+        })
         .join(' ');
-      if (b.kind !== 'heading') return `<p>${marker}${inner}</p>`;
+      // A commentary block is set smaller and indented, the way a printed
+      // commentary sets itself apart from the text it comments on.
+      if (b.kind !== 'heading') {
+        const cls = b.layer ? ' class="commentary"' : '';
+        return `<p${cls}>${marker}${inner}</p>`;
+      }
       const id = ids.get(b);
       if (id) anchors.push(id);
       return `<h2${id ? ` id="${id}"` : ''}>${marker}${inner}</h2>`;
@@ -172,6 +184,10 @@ function titlePage(book: Book, doc: BookDoc): string {
     '<hr/>',
     `<p class="colophon">${esc(book.category)} · ${esc(book.subcategory)} · ${doc.pageCount} עמודים</p>`,
     `<p class="colophon">${esc(at.provenance)}</p>`,
+    ...(doc.alsoFrom ?? []).map(
+      (a) =>
+        `<p class="colophon">${esc(a.provenance)} — ${esc(a.library)}, ${esc(a.license.name)}</p>`,
+    ),
     '<hr/>',
     `<p class="colophon"><strong>הטקסט באדיבות <a href="${at.libraryUrl}">${esc(at.library)}</a></strong> — ` +
       `${esc(at.about)}</p>`,

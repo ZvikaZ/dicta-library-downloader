@@ -16,6 +16,7 @@ export function sampleArchive(): Uint8Array {
 export const alfeiMenashe: Book = {
   id: 'dicta:alfeimenashe',
   provider: 'dicta',
+  kind: 'book',
   title: 'אלפי מנשה חלק א',
   titleEn: 'Alfei Menashe part 1',
   author: 'מנשה בן יוסף מאילייה בן פורת',
