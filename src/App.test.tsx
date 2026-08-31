@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { makeBook } from './test/fixtures';
+import { makeBook, makeDoc } from './test/fixtures';
 import type { Catalogue } from './lib/types';
 
 const exportBook = vi.hoisted(() => vi.fn());
@@ -56,27 +56,43 @@ const catalogue: Catalogue = {
       { name: 'ת"ר - ת"ש', count: 1 },
       { name: 'אחרונים - מערב', count: 1 },
     ],
-    yearRange: [1880, 1935],
     total: 3,
     fetchedAt: '2026-08-27',
   },
   books,
 };
 
-function mockCatalogue(payload: unknown = catalogue, ok = true) {
+/** A library with no books, so a test can ignore the half it is not about. */
+const empty: Catalogue = {
+  facets: { categories: [], subcategories: [], total: 0, fetchedAt: '2026-08-27' },
+  books: [],
+};
+
+/**
+ * The app loads one catalogue file per library and merges them, so the stub has
+ * to answer per URL rather than return one payload to every call.
+ */
+function mockCatalogue(payload: unknown = catalogue, ok = true, sefaria: unknown = empty) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(() => Promise.resolve({ ok, status: ok ? 200 : 404, json: () => Promise.resolve(payload) })),
+    vi.fn((url: string) =>
+      Promise.resolve({
+        ok,
+        status: ok ? 200 : 404,
+        json: () => Promise.resolve(String(url).includes('sefaria') ? sefaria : payload),
+      }),
+    ),
   );
 }
 
 beforeEach(() => {
   getDoc.mockReset();
-  getDoc.mockResolvedValue({
-    pageCount: 1,
-    fidelity: 'bold',
-    blocks: [{ kind: 'para', page: 2, spans: [{ text: 'פתח דבר לספר', bold: false }] }],
-  });
+  getDoc.mockResolvedValue(
+    makeDoc({
+      fidelity: 'bold',
+      blocks: [{ kind: 'para', page: 2, spans: [{ text: 'פתח דבר לספר', bold: false }] }],
+    }),
+  );
   exportBook.mockReset();
   exportBook.mockResolvedValue(undefined);
   window.history.replaceState(null, '', '/');
@@ -162,16 +178,6 @@ describe('filtering', () => {
     await user.click(screen.getByRole('checkbox', { name: /חסידות/ }));
     await waitFor(() => expect(within(subGroup()).getAllByRole('checkbox')).toHaveLength(1));
     expect(within(subGroup()).getByRole('checkbox', { name: /ת"ר/ })).toBeInTheDocument();
-  });
-
-  it('filters by year range', async () => {
-    await renderApp();
-
-    // A single change event, as a spinner or a paste produces — typing digit by
-    // digit into a controlled number field re-parses each prefix.
-    fireEvent.change(screen.getByLabelText('משנה'), { target: { value: '1930' } });
-    await waitFor(() => expect(screen.getByText('1 ספרים מתוך 3')).toBeInTheDocument());
-    expect(screen.getByText('אלפי מנשה עה״ת')).toBeInTheDocument();
   });
 
   it('clears every filter at once', async () => {

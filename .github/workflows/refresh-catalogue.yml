@@ -1,10 +1,11 @@
 name: Refresh catalogue
 
-# Dicta adds books over time; this re-pulls books.json weekly and commits it
-# only when it actually changed.
+# Both libraries add books over time. This re-pulls each catalogue daily and
+# commits only when a book actually changed — see the comparison step for why
+# that needs more than `git diff`.
 on:
   schedule:
-    - cron: '17 4 * * 1'
+    - cron: '17 4 * * *'
   workflow_dispatch:
 
 permissions:
@@ -18,15 +19,49 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/fetch-books.mjs
-      - name: Commit if changed
+
+      - name: Keep the current catalogues for comparison
         run: |
-          if git diff --quiet -- public/books.json; then
-            echo "Catalogue unchanged."
+          cp public/books.json /tmp/books.before.json
+          cp public/books-sefaria.json /tmp/books-sefaria.before.json
+
+      - run: node scripts/fetch-books.mjs
+
+      # ~1,100 requests against the per-title endpoint, a few minutes.
+      - run: node scripts/fetch-sefaria.mjs
+
+      - name: Commit only if a book changed
+        run: |
+          # Every run stamps facets.fetchedAt with today's date, so the file
+          # always differs and `git diff` alone would commit — and redeploy —
+          # daily whether or not anything was added. Compare the books instead.
+          changed=0
+          for name in books books-sefaria; do
+            before=$(node -e "
+              const b = require('/tmp/$name.before.json').books;
+              console.log(JSON.stringify(b));
+            " | sha256sum)
+            after=$(node -e "
+              const b = require('./public/$name.json').books;
+              console.log(JSON.stringify(b));
+            " | sha256sum)
+            if [ "$before" != "$after" ]; then
+              echo "$name: books changed"
+              changed=1
+            else
+              echo "$name: unchanged"
+              # Keep the old file so its date stamp does not churn either.
+              cp /tmp/$name.before.json public/$name.json
+            fi
+          done
+
+          if [ "$changed" = "0" ]; then
+            echo "Nothing to commit."
             exit 0
           fi
+
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add public/books.json
-          git commit -m "chore: refresh Dicta catalogue"
+          git add public/books.json public/books-sefaria.json
+          git commit -m "chore: refresh catalogues"
           git push

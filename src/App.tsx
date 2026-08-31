@@ -12,6 +12,8 @@ import {
   type Query,
   type SortKey,
 } from './lib/search';
+import { mergeCatalogues } from './lib/catalogue';
+import { PROVIDERS, PROVIDER_IDS } from './lib/providers/registry';
 import type { Catalogue } from './lib/types';
 
 // The reader carries the zip reader and parser with it; browsing the catalogue
@@ -28,6 +30,7 @@ function folioFromParams(params: URLSearchParams): number | null {
 const DICTA_SITE = 'https://library.dicta.org.il';
 const DICTA_REPO =
   'https://github.com/Dicta-Israel-Center-for-Text-Analysis/Dicta-Library-Download';
+const SEFARIA_SITE = 'https://www.sefaria.org';
 const CC_BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
 
 export function App() {
@@ -50,12 +53,17 @@ export function App() {
   );
 
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}books.json`)
-      .then((r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json();
-      })
-      .then(setCatalogue)
+    // One file per library, merged here: they refresh on separate schedules,
+    // and a reader who only wants one of them still pays for the other's rows
+    // either way, so there is nothing to gain from splitting the fetch further.
+    const load = async (name: string): Promise<Catalogue> => {
+      const res = await fetch(`${import.meta.env.BASE_URL}${name}`);
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    };
+
+    Promise.all(PROVIDER_IDS.map((id) => load(PROVIDERS[id].catalogue)))
+      .then((parts) => setCatalogue(mergeCatalogues(parts)))
       .catch(() => setLoadError('טעינת רשימת הספרים נכשלה.'));
   }, []);
 
@@ -105,14 +113,20 @@ export function App() {
     <>
       <header className="masthead">
         <div className="masthead-inner">
-          <h1>הספרייה של דיקטה — הורדה</h1>
-          <p className="tagline">עיון וחיפוש בקטלוג, והורדה כ‑EPUB, Word או PDF</p>
+          <h1>מדף</h1>
+          <p className="tagline">
+            ספריית דיקטה וספריא — לעיון, לחיפוש ולהורדה כ‑EPUB, Word או PDF
+          </p>
           <p className="credit">
             כל הטקסטים באדיבות{' '}
             <a href={DICTA_SITE} target="_blank" rel="noreferrer">
               הספרייה של דיקטה
+            </a>{' '}
+            ו־
+            <a href={SEFARIA_SITE} target="_blank" rel="noreferrer">
+              ספריא
             </a>
-            , המרכז הישראלי לניתוח טקסטים. תודה על המיזם ועל שחרור הטקסטים לשימוש חופשי.
+            . תודה על המיזמים ועל שחרור הטקסטים לשימוש חופשי.
           </p>
         </div>
       </header>
@@ -191,6 +205,10 @@ export function App() {
           נתונים:{' '}
           <a href={DICTA_REPO} target="_blank" rel="noreferrer">
             Dicta-Library-Download
+          </a>{' '}
+          ·{' '}
+          <a href={SEFARIA_SITE} target="_blank" rel="noreferrer">
+            Sefaria
           </a>{' '}
           · רישיון{' '}
           <a href={CC_BY_SA} target="_blank" rel="noreferrer">

@@ -29,7 +29,9 @@ if (!res.ok) throw new Error(`Upstream returned ${res.status}`);
 const raw = await res.json();
 
 const books = raw.map((b) => ({
-  id: b.fileName,
+  // Prefixed so ids stay unique once a second library is in the catalogue.
+  id: `dicta:${b.fileName}`,
+  provider: 'dicta',
   title: b.displayName,
   titleEn: b.displayNameEnglish ?? null,
   author: b.author?.trim() || null,
@@ -43,9 +45,11 @@ const books = raw.map((b) => ({
   year: toYear(b.printYear),
   source: b.source,
   reviewed: b.notHumanReviewed !== true,
-  // nikudMetegFileURL is deliberately dropped: exports are un-vocalised.
-  textUrl: b.textFileURL,
-  ocrUrl: b.OCRDataURL,
+  // The OCR archive, not the plain-text one: it is the only source carrying
+  // structure. nikudMetegFileURL is deliberately dropped — exports are
+  // un-vocalised.
+  ref: b.OCRDataURL,
+  sourceUrl: b.textFileURL,
   key: normalise(
     [b.displayName, b.displayNameEnglish, b.author, b.authorEnglish, b.printLocation].join(' '),
   ),

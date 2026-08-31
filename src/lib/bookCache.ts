@@ -1,4 +1,5 @@
-import { loadBook, type Progress } from './fetchBook';
+import { loadBook } from './providers';
+import type { Progress } from './providers/types';
 import type { Book, BookDoc } from './types';
 
 /**

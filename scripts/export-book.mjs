@@ -37,13 +37,14 @@ export { downloadName } from './src/lib/filename';`,
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { books } = JSON.parse(await readFile('public/books.json', 'utf8'));
-  const book = books.find((b) => b.id === bookId);
+  // Accept either the bare Dicta slug or the full catalogue id.
+  const book = books.find((b) => b.id === bookId || b.id === `dicta:${bookId}`);
   if (!book) throw new Error(`No book with id "${bookId}"`);
 
   const { buildDoc, pagesFromZip, buildEpub, buildPdf, buildDocx, downloadName } = await loadLib();
 
   process.stdout.write(`${book.title} — downloading… `);
-  const res = await fetch(book.ocrUrl);
+  const res = await fetch(book.ref);
   if (!res.ok) throw new Error(`Archive fetch failed: ${res.status}`);
   const raw = new Uint8Array(await res.arrayBuffer());
   process.stdout.write(`${(raw.length / 1e6).toFixed(2)} MB\n`);

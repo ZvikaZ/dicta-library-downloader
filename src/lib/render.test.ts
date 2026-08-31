@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
-import { alfeiMenashe, sampleArchive } from '../test/fixtures';
+import { alfeiMenashe, makeDoc, sampleArchive } from '../test/fixtures';
 import { buildDocx } from './docx';
 import { buildEpub, chapterise } from './epub';
 import { pagesFromZip } from './fetchBook';
@@ -151,20 +151,18 @@ describe('chapters', () => {
   });
 
   it('always yields at least one chapter, even for an empty book', () => {
-    const empty: BookDoc = { blocks: [], pageCount: 0, fidelity: 'pages' };
+    const empty: BookDoc = makeDoc({ blocks: [], pageCount: 0 });
     expect(chapterise(alfeiMenashe, empty)).toHaveLength(1);
   });
 
   it('splits a single oversized section into numbered parts', () => {
-    const long: BookDoc = {
-      pageCount: 1,
-      fidelity: 'pages',
+    const long: BookDoc = makeDoc({
       blocks: Array.from({ length: 60 }, () => ({
         kind: 'para' as const,
         spans: [{ text: 'א'.repeat(5000), bold: false }],
         page: 1,
       })),
-    };
+    });
     const chapters = chapterise(alfeiMenashe, long);
     expect(chapters.length).toBeGreaterThan(1);
     expect(chapters[1].title).toMatch(/\(2\)$/);

@@ -2,12 +2,8 @@ import JSZip from 'jszip';
 import { FRANK_RUHL_LICENSE, frankRuhlBytes } from '../assets/fonts/frankRuhl';
 import { blockText } from './parseOcr';
 import { headingId, shouldIncludeToc, tocEntries, type TocEntry } from './toc';
-import type { Block, Book, BookDoc } from './types';
+import { blockLabel, type Block, type Book, type BookDoc } from './types';
 
-const CC_BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
-const DICTA_SITE = 'https://library.dicta.org.il';
-const DICTA_REPO =
-  'https://github.com/Dicta-Israel-Center-for-Text-Analysis/Dicta-Library-Download';
 
 export function esc(s: string): string {
   return s
@@ -136,7 +132,7 @@ function renderChapter(
         pages.push(b.page);
         marker =
           `<span epub:type="pagebreak" role="doc-pagebreak" id="pg${b.page}" ` +
-          `title="${b.page}" class="pagebreak">[${b.page}]</span>`;
+          `title="${esc(blockLabel(b))}" class="pagebreak">[${esc(blockLabel(b))}]</span>`;
       }
       // Bold that is not a section title is real emphasis in the source and is
       // preserved as <strong>, matching how Dicta renders the page.
@@ -169,18 +165,24 @@ ${body}
 }
 
 function titlePage(book: Book, doc: BookDoc): string {
+  const at = doc.attribution;
   const lines = [
     book.author ? `<p class="colophon">${esc(book.author)}</p>` : '',
     book.place && book.year ? `<p class="colophon">${esc(book.place)} ${book.year}</p>` : '',
     '<hr/>',
     `<p class="colophon">${esc(book.category)} · ${esc(book.subcategory)} · ${doc.pageCount} עמודים</p>`,
-    '<p class="colophon">הטקסט הופק בסריקה ובזיהוי אוטומטי (OCR) וייתכנו בו שיבושים. ללא ניקוד.</p>',
+    `<p class="colophon">${esc(at.provenance)}</p>`,
     '<hr/>',
-    `<p class="colophon"><strong>הטקסט באדיבות <a href="${DICTA_SITE}">הספרייה של דיקטה</a></strong> — ` +
-      'מיזם של דיקטה, המרכז הישראלי לניתוח טקסטים, המנגיש טקסטים תורניים לציבור ' +
-      'באמצעות זיהוי תווים אוטומטי. תודה על העבודה ועל השחרור לשימוש חופשי.</p>',
-    `<p class="colophon">מקור הנתונים: <a href="${DICTA_REPO}">Dicta-Library-Download</a></p>`,
-    `<p class="colophon">רישיון הטקסט: <a href="${CC_BY_SA}">Creative Commons BY-SA 4.0</a></p>`,
+    `<p class="colophon"><strong>הטקסט באדיבות <a href="${at.libraryUrl}">${esc(at.library)}</a></strong> — ` +
+      `${esc(at.about)}</p>`,
+    at.dataUrl && at.dataLabel
+      ? `<p class="colophon">מקור הנתונים: <a href="${esc(at.dataUrl)}">${esc(at.dataLabel)}</a></p>`
+      : '',
+    `<p class="colophon">רישיון הטקסט: ${
+      at.license.url
+        ? `<a href="${at.license.url}">${esc(at.license.name)}</a>`
+        : esc(at.license.name)
+    }</p>`,
     '<p class="colophon">גופן: Frank Ruhl Libre (SIL Open Font License 1.1) — ראו fonts/OFL.txt</p>',
   ].filter(Boolean);
 
@@ -200,7 +202,7 @@ function contentsPage(entries: TocEntry[], location: Map<string, string>): strin
   const rows = entries
     .map((e) => {
       const href = `${location.get(e.id) ?? ''}#${e.id}`;
-      return `<li><a href="${href}">${esc(e.text)}</a> <span class="folio">${e.page}</span></li>`;
+      return `<li><a href="${href}">${esc(e.text)}</a> <span class="folio">${esc(e.label)}</span></li>`;
     })
     .join('\n');
 
@@ -256,7 +258,7 @@ export async function buildEpub(book: Book, doc: BookDoc): Promise<Uint8Array> {
   if (withContents) oebps.file('contents.xhtml', contentsPage(entries, location));
   for (const ch of chapters) oebps.file(ch.name, ch.xhtml);
 
-  const uid = `urn:dicta:${book.id}`;
+  const uid = `urn:book:${book.id}`;
   const modified = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 
   const manifest = [
@@ -286,9 +288,11 @@ export async function buildEpub(book: Book, doc: BookDoc): Promise<Uint8Array> {
 <dc:title>${esc(book.title)}</dc:title>
 <dc:language>he</dc:language>
 ${book.author ? `<dc:creator>${esc(book.author)}</dc:creator>` : ''}
-<dc:publisher>Dicta — Israel Center for Text Analysis</dc:publisher>
-<dc:source>${esc(book.ocrUrl)}</dc:source>
-<dc:rights>CC BY-SA 4.0 — ${CC_BY_SA}</dc:rights>
+<dc:publisher>${esc(doc.attribution.library)}</dc:publisher>
+<dc:source>${esc(book.sourceUrl ?? book.ref)}</dc:source>
+<dc:rights>${esc(doc.attribution.license.name)}${
+  doc.attribution.license.url ? ` — ${doc.attribution.license.url}` : ''
+}</dc:rights>
 ${book.year ? `<dc:date>${book.year}</dc:date>` : ''}
 <meta property="dcterms:modified">${modified}</meta>
 </metadata>

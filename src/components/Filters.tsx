@@ -44,17 +44,6 @@ function FacetGroup({
 }
 
 export function Filters({ facets, subcategories, query, onChange }: Props) {
-  const [minYear, maxYear] = facets.yearRange;
-  const years = query.years ?? facets.yearRange;
-
-  const setYears = (index: 0 | 1, raw: string) => {
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n)) return;
-    const next: [number, number] = [...years] as [number, number];
-    next[index] = n;
-    onChange({ ...query, years: next });
-  };
-
   // Only subcategories reachable under the current category selection.
   const subFacets = facets.subcategories.filter((s) => subcategories.includes(s.name));
 
@@ -73,6 +62,15 @@ export function Filters({ facets, subcategories, query, onChange }: Props) {
         />
       </div>
 
+      {facets.sources && facets.sources.length > 1 && (
+        <FacetGroup
+          title="מקור"
+          items={facets.sources}
+          selected={query.sources}
+          onToggle={(name) => onChange({ ...query, sources: toggle(query.sources, name) })}
+        />
+      )}
+
       <FacetGroup
         title="קטגוריה"
         items={facets.categories}
@@ -90,38 +88,6 @@ export function Filters({ facets, subcategories, query, onChange }: Props) {
         onToggle={(name) => onChange({ ...query, subcategories: toggle(query.subcategories, name) })}
       />
 
-      <div className="facet">
-        <h3>שנת דפוס</h3>
-        <div className="year-row">
-          <input
-            type="number"
-            aria-label="משנה"
-            min={minYear}
-            max={maxYear}
-            value={years[0]}
-            onChange={(e) => setYears(0, e.target.value)}
-          />
-          <span aria-hidden="true">–</span>
-          <input
-            type="number"
-            aria-label="עד שנה"
-            min={minYear}
-            max={maxYear}
-            value={years[1]}
-            onChange={(e) => setYears(1, e.target.value)}
-          />
-        </div>
-        {query.years && (
-          <button
-            type="button"
-            className="link-button"
-            style={{ marginTop: 8 }}
-            onClick={() => onChange({ ...query, years: null })}
-          >
-            ביטול סינון שנים
-          </button>
-        )}
-      </div>
     </aside>
   );
 }

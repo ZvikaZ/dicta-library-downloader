@@ -1,3 +1,4 @@
+import { DICTA_ATTRIBUTION } from './attribution';
 import type { Block, BookDoc, Fidelity, Span } from './types';
 
 // The OCR pages are machine-generated: one <span> per word, no newlines, no
@@ -139,5 +140,11 @@ export function buildDoc(pages: { name: string; html: string }[]): BookDoc {
   }
   flush();
 
-  return { blocks, pageCount: pages.length, fidelity };
+  return {
+    blocks,
+    pageCount: pages.length,
+    fidelity,
+    citation: 'דף',
+    attribution: DICTA_ATTRIBUTION,
+  };
 }

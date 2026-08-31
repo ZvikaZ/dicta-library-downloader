@@ -1,5 +1,5 @@
 import { blockText } from './parseOcr';
-import type { BookDoc } from './types';
+import { blockLabel, type BookDoc } from './types';
 
 /** Single source of truth for anchor ids, shared by the TOC and the renderers. */
 export function headingId(blockIndex: number): string {
@@ -8,8 +8,10 @@ export function headingId(blockIndex: number): string {
 
 export interface TocEntry {
   text: string;
-  /** Printed folio the section opens on. */
+  /** Citation slot the section opens on. */
   page: number;
+  /** What that slot prints — a folio number, or a Hebrew reference. */
+  label: string;
   /** Anchor id, unique across the book. */
   id: string;
 }
@@ -27,7 +29,7 @@ export function tocEntries(doc: BookDoc): TocEntry[] {
   doc.blocks.forEach((b, i) => {
     if (b.kind !== 'heading') return;
     const text = blockText(b).trim();
-    if (text) entries.push({ text, page: b.page, id: headingId(i) });
+    if (text) entries.push({ text, page: b.page, label: blockLabel(b), id: headingId(i) });
   });
   return entries;
 }

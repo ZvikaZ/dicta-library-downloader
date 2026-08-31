@@ -14,9 +14,8 @@ import {
   TextRun,
 } from 'docx';
 import { shouldIncludeToc, tocEntries } from './toc';
-import type { Book, BookDoc, Span } from './types';
+import { blockLabel, type Book, type BookDoc, type Span } from './types';
 
-const CC_BY_SA = 'https://creativecommons.org/licenses/by-sa/4.0/';
 
 // Word picks the font for Hebrew from the *complex script* slot (`cs`), not
 // `ascii`, so both are set — otherwise the run silently falls back to Calibri.
@@ -75,7 +74,7 @@ function rtl(
  * right-to-left book), and anchored to the text vertically it travels with the
  * paragraph it marks, however Word repaginates.
  */
-function folioMark(folio: number): Paragraph {
+function folioMark(folio: string): Paragraph {
   return new Paragraph({
     frame: {
       type: 'absolute',
@@ -128,13 +127,17 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
   }
   front.push(
     rtl(`${book.category} · ${book.subcategory} · ${doc.pageCount} עמודים`, { small: true }),
-    rtl('הטקסט הופק בסריקה ובזיהוי אוטומטי (OCR) וייתכנו בו שיבושים. ללא ניקוד.', { small: true }),
+    rtl(doc.attribution.provenance, { small: true }),
     rtl(
-      'הטקסט באדיבות הספרייה של דיקטה (library.dicta.org.il) — המרכז הישראלי לניתוח טקסטים, ' +
-        'המנגיש טקסטים תורניים לציבור ללא עלות. תודה על העבודה ועל השחרור לשימוש חופשי.',
+      `הטקסט באדיבות ${doc.attribution.library} (${doc.attribution.libraryUrl}) — ` +
+        doc.attribution.about,
       { small: true },
     ),
-    rtl(`רישיון: Creative Commons BY-SA 4.0 — ${CC_BY_SA}`, { small: true }),
+    rtl(
+      `רישיון: ${doc.attribution.license.name}` +
+        (doc.attribution.license.url ? ` — ${doc.attribution.license.url}` : ''),
+      { small: true },
+    ),
     new Paragraph({ children: [new PageBreak()] }),
   );
 
@@ -154,7 +157,7 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
           children: [
             new TextRun({ text: e.text, rightToLeft: true, font: FONT, size: 21, color: INK }),
             new TextRun({
-              text: `  ${e.page}`,
+              text: `  ${e.label}`,
               rightToLeft: true,
               font: FONT,
               size: SMALL_SIZE,
@@ -172,7 +175,7 @@ export async function buildDocx(book: Book, doc: BookDoc): Promise<Uint8Array> {
   for (const b of doc.blocks) {
     if (!seenFolios.has(b.page)) {
       seenFolios.add(b.page);
-      body.push(folioMark(b.page));
+      body.push(folioMark(blockLabel(b)));
     }
     body.push(rtl(b.spans, { heading: b.kind === 'heading', indent: b.kind === 'para' }));
   }

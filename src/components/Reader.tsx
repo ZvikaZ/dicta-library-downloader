@@ -4,7 +4,7 @@ import { findMatches, segment, type Match } from '../lib/findInText';
 import { FORMAT_HINT, FORMAT_LABEL } from '../lib/formats';
 import { blockText } from '../lib/parseOcr';
 import { tocEntries } from '../lib/toc';
-import type { Block, Book, BookDoc, ExportFormat } from '../lib/types';
+import { blockLabel, type Block, type Book, type BookDoc, type ExportFormat } from '../lib/types';
 
 const SIZES = [16, 18, 20, 23, 26];
 const DEFAULT_SIZE = 1;
@@ -238,7 +238,10 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
     }
   };
 
-  const currentFolio = doc?.blocks[current]?.page;
+  const exportable = doc?.attribution.license.exportable ?? true;
+  const currentBlock = doc?.blocks[current];
+  const currentFolio =
+    currentBlock && [doc?.citation, blockLabel(currentBlock)].filter(Boolean).join(' ');
 
   // The section the reader is inside: the last heading at or above this block.
   const activeEntry = useMemo(() => {
@@ -275,7 +278,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
             and this bar only has to say which book you are in. */}
         <div className="rd-title">
           <strong>{book.title}</strong>
-          {currentFolio !== undefined && <span className="rd-at">דף {currentFolio}</span>}
+          {currentFolio && <span className="rd-at">{currentFolio}</span>}
         </div>
 
         <div className="rd-search">
@@ -340,7 +343,10 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
             <button
               type="button"
               className="rd-btn rd-download"
-              disabled={busy !== null || !doc}
+              disabled={busy !== null || !doc || !exportable}
+              // An edition with a named rights holder may be read here but not
+              // handed over as a file.
+              title={exportable ? undefined : 'המהדורה הזו מוגנת בזכויות יוצרים ואינה ניתנת להורדה'}
               onClick={() => setMenuOpen((v) => !v)}
               aria-expanded={menuOpen}
             >
@@ -410,7 +416,7 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
                     }}
                   >
                     <span>{e.text}</span>
-                    <span className="rd-folio">{e.page}</span>
+                    <span className="rd-folio">{e.label}</span>
                   </button>
                 </li>
               ))}
@@ -452,27 +458,32 @@ export function Reader({ book, onClose, initialFolio, onFolio }: Props) {
                     data-folio={block.page}
                     className="rd-block"
                   >
-                    {newPage && <span className="rd-pagemark">{block.page}</span>}
+                    {newPage && <span className="rd-pagemark">{blockLabel(block)}</span>}
                     <BlockView block={block} hits={hitsByBlock.get(i) ?? []} />
                   </div>
                 );
               })}
               <p className="rd-colophon">
                 הטקסט באדיבות{' '}
-                <a href="https://library.dicta.org.il" target="_blank" rel="noreferrer">
-                  הספרייה של דיקטה
+                <a href={doc.attribution.libraryUrl} target="_blank" rel="noreferrer">
+                  {doc.attribution.library}
                 </a>{' '}
                 · רישיון{' '}
-                <a
-                  href="https://creativecommons.org/licenses/by-sa/4.0/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  CC BY-SA 4.0
-                </a>{' '}
-                · <a href={book.textUrl}>הורדת מקור הטקסט</a>
+                {doc.attribution.license.url ? (
+                  <a href={doc.attribution.license.url} target="_blank" rel="noreferrer">
+                    {doc.attribution.license.name}
+                  </a>
+                ) : (
+                  doc.attribution.license.name
+                )}
+                {book.sourceUrl && (
+                  <>
+                    {' '}
+                    · <a href={book.sourceUrl}>הורדת מקור הטקסט</a>
+                  </>
+                )}
                 <br />
-                הטקסט הופק בזיהוי תווים אוטומטי וייתכנו בו שיבושים. ללא ניקוד.
+                {doc.attribution.provenance}
               </p>
             </article>
           )}

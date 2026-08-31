@@ -25,7 +25,9 @@ export function downloadName(book: Book, format: ExportFormat): string {
     .trim()
     .replace(/[. ]+$/, '');
 
-  if (!base || RESERVED.test(base)) base = book.id;
+  // The id is provider-prefixed (`dicta:alfeimenashe`), and a colon is
+  // illegal in a file name on Windows.
+  if (!base || RESERVED.test(base)) base = book.id.replace(ILLEGAL, '-');
   // Leave room for the extension and for long paths; 120 chars is well within
   // every filesystem's per-component limit.
   if (base.length > 120) base = base.slice(0, 120).trim();

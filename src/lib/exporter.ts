@@ -4,7 +4,7 @@ import { buildDocx } from './docx';
 import { downloadName } from './filename';
 import { buildEpub } from './epub';
 import { getDoc } from './bookCache';
-import type { Progress } from './fetchBook';
+import type { Progress } from './providers/types';
 import { buildPdf, type PdfFonts } from './pdf';
 import type { Book, ExportFormat } from './types';
 

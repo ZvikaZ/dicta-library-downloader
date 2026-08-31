@@ -1,25 +1,50 @@
-# הספרייה של דיקטה — ממשק הורדה
+# מדף — ממשק קריאה והורדה
 
-Browse the [Dicta Library](https://library.dicta.org.il) catalogue and download any of its
-1,007 books as **EPUB**, **Word (.docx)**, or **PDF** — generated entirely in the browser, with no
-server. Each file gets a table of contents, the printed folio numbers, and proper right-to-left
-Hebrew typesetting.
+Read and search **2,098 Hebrew books** from two libraries — the
+[Dicta Library](https://library.dicta.org.il) (1,007) and [Sefaria](https://www.sefaria.org)
+(1,091) — and download any of them as **EPUB**, **Word (.docx)**, or **PDF**, generated entirely
+in the browser with no server. Each file gets a table of contents, citable references, and proper
+right-to-left Hebrew typesetting.
 
-> All texts are the work of **[Dicta — the Israel Center for Text Analysis](https://library.dicta.org.il)**,
-> which scans, OCRs and releases these rabbinic works to the public free of charge under
-> [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Thank you for the project and
-> for releasing the texts freely. This site is an unofficial download interface and is not
-> affiliated with Dicta. Catalogue data:
-> [Dicta-Library-Download](https://github.com/Dicta-Israel-Center-for-Text-Analysis/Dicta-Library-Download).
+> All texts are the work of their libraries. **[Dicta — the Israel Center for Text
+> Analysis](https://library.dicta.org.il)** scans, OCRs and releases rabbinic works under
+> [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); **[Sefaria](https://www.sefaria.org)**
+> maintains a free digital library of Jewish texts, where each edition carries its own licence.
+> Thank you both for the projects and for releasing the texts freely. This site is an unofficial
+> interface and is affiliated with neither.
 
 ## Why this exists
 
-Dicta publishes each book as a **ZIP of one text file per scanned page** — there is no EPUB,
-DOCX or PDF anywhere in the dataset. This app builds those formats client-side. It works as a
-static site because `files.dicta.org.il` serves `Access-Control-Allow-Origin: *`, so the browser
-can fetch and unpack the archives directly.
+Neither library hands you a finished book. Dicta publishes each work as a **ZIP of one text file
+per scanned page**; Sefaria serves **nested JSON over an API**. There is no EPUB, DOCX or PDF in
+either dataset. This app builds those formats client-side, and works as a static site because
+both `files.dicta.org.il` and `www.sefaria.org/api` serve `Access-Control-Allow-Origin: *`.
 
-## How a book is converted
+Everything downstream of loading a book — the reader, the search, the three exporters, the
+bidi handling — is source-agnostic. Adding a library means three things: an entry in
+`src/lib/providers/registry.ts`, a loader module beside it that turns the library's data into a
+`BookDoc`, and a script that writes its catalogue into `public/`. Nothing else counts the
+libraries, and the `Provider` type widens from the registry on its own.
+
+### One vocabulary for two shelves
+
+The libraries classify differently, and each is internally consistent: Dicta catalogues printed
+volumes by genre *and by what they comment on* (`תלמוד ומפרשיו`, `רמב"ם ומפרשיו`), Sefaria
+catalogues primary texts by canonical corpus (`תלמוד`, `משנה`, `תוספתא`). Merged raw that gave 24
+categories with near-duplicate pairs — `הלכה` beside `הלכה ומנהג`, `שו"ת` beside
+`שאלות ותשובות (שו"ת)` — where picking one silently hid half the shelf.
+
+`src/lib/categories.ts` maps both onto **15 subjects**, ten of which now draw on both libraries.
+Where a library's category is too coarse the subcategory decides: Dicta files prayer books under
+`שונות`, and Sefaria files the Mishneh Torah's 90 sections under `הלכה`, away from the
+commentators Dicta gives a shelf of their own.
+
+The mapping is applied when the catalogues are **merged**, not when they are fetched — each
+library's own file keeps its own vocabulary, which is its data to describe as it likes. An
+unmapped category passes through unchanged rather than falling into a catch-all, so a library that
+adds one shows up in the sidebar instead of going quietly missing.
+
+## How a Dicta book is converted
 
 Each book offers three archives. We use `OCRDataURL` (per-page HTML), not the plain-text one:
 it is the only source carrying any structure. Each word is a `<span>` whose `class` may be
@@ -42,6 +67,36 @@ opening its own. Bold that is not a title is kept as `<strong>`, matching how Di
 
 Every output carries the printed folio numbers from the scan, so a passage stays citable against
 the original edition.
+
+## How a Sefaria book is converted
+
+Sefaria stores a book as a **jagged array**: nested arrays of HTML fragments, one nesting level
+per address in a reference. Depth varies — `Genesis` is `[chapter][verse]`, `Rashi on Berakhot` is
+`[daf][line][comment]` — so `sefariaDoc.ts` recurses on the array rather than assuming a shape,
+emitting a heading per outermost section and a paragraph per segment.
+
+A **simple** book arrives whole in one request, under a second even for a 4.6 MB Shulchan Arukh.
+A **complex** one (the Haggadah, the Zohar) rejects a book-level ref: there the schema tree is
+fetched instead, walked to its `JaggedArrayNode` leaves, and each leaf pulled separately — the
+node's own Hebrew title becomes the heading, which is better structure than anything derivable
+from the text.
+
+Sections are numbered in Hebrew letters (`טו`, never `יה`), and a Talmud daf as `ה ע"א`. Where
+Dicta prints a scan folio in the margin, Sefaria prints the reference: `ג:יב`.
+
+Inline markup is reduced to the one thing the block model carries, bold, under a rule worth
+stating: **a span boundary only ever falls where the source had whitespace.** Everything
+downstream rejoins spans with a single space, so splitting `<big>בְּ</big>רֵאשִׁית` at the tag
+would render `בְּ רֵאשִׁית`. Where emphasis changes mid-word the word wins.
+
+### Attribution is per-edition
+
+Dicta releases its whole library under one licence, so its credit is a constant. A Sefaria *work*
+has no licence — its *editions* do, and the same book can be public domain in one and under
+copyright in another. So the loader reads `license`, `versionTitle` and `versionSource` from the
+version it actually fetched, carries them on the `BookDoc`, and every colophon is rendered from
+that. An edition naming a rights holder (`Copyright: Schocken`) can be read here but its download
+is refused.
 
 ### Typography
 
@@ -74,21 +129,27 @@ a numeric offset that moves the pen anywhere, including backwards. So glyphs are
 order while landing right-to-left on the page. Selecting, copying and Ctrl-F all yield real Hebrew;
 98.6% of the words extracted from a generated book match the source text verbatim.
 
-Exports are **un-vocalised**; `nikudMetegFileURL` is deliberately ignored.
+**Vocalisation.** Dicta exports are un-vocalised — `nikudMetegFileURL` is deliberately ignored.
+Sefaria's texts often *are* vocalised, Tanakh with cantillation on top, and they are kept that way.
+That was expected to be a problem: `pdf.ts` places words at explicit coordinates and pdf-lib does no
+OpenType shaping, so combining marks have no GPOS attachment to position them. Rendering a
+vocalised page and inspecting it settled the question — the marks land correctly, so no stripping
+is needed.
 
 ## Development
 
 ```bash
 npm install        # .npmrc sets legacy-peer-deps (npm 10.9 trips over vitest's peer set)
 npm run dev        # local dev server
-npm test           # 64 tests: parser, EPUB/DOCX/PDF output, bidi, and the UI
+npm test           # 170 tests: both parsers, EPUB/DOCX/PDF output, bidi, licensing, UI
 npm run build      # production build into dist/
 ```
 
 Helper scripts:
 
 ```bash
-npm run fetch:books                    # re-pull and normalise the catalogue into public/
+npm run fetch:books                    # re-pull and normalise the Dicta catalogue into public/
+npm run fetch:sefaria                  # same for Sefaria (~1,100 API calls, a few minutes)
 npm run embed:font                     # regenerate the base64 font module
 npm run export:book alfeimenashe       # build EPUB + PDF from the CLI, no browser
 python scripts/make-pdf-fonts.py       # regenerate the static TTFs the PDF embeds
@@ -97,6 +158,16 @@ python scripts/make-pdf-fonts.py       # regenerate the static TTFs the PDF embe
 `scripts/fetch-books.mjs` normalises the upstream feed: `printYear` arrives as a number for 895
 books and a string for 112, `authorEnglish` is sometimes null, and it precomputes a search key
 with nikud and geresh/gershayim stripped so `אלפי מנשה עה"ת` is findable however you type it.
+
+`scripts/fetch-sefaria.mjs` keeps the **1,091 standalone works** out of Sefaria's 6,604 titles —
+the rest are per-tractate commentaries (`Rashi on Berakhot`) and targumim, which are not books in
+the sense this catalogue means. Author, year and place live only on the per-title endpoint, so it
+makes one request per book at concurrency 8. A few titles ship no `heCategories`; rather than
+hardcode a table, the corpus translates itself from every other book's category pair.
+
+Both catalogues refresh daily in CI. Because each run stamps `fetchedAt` with today's date, the
+file always differs — so the workflow compares the **books** rather than the file, and commits
+only when one actually changed.
 
 ### Testing
 
@@ -118,6 +189,7 @@ under any repository path. A second workflow refreshes the catalogue weekly.
 
 ## Licence
 
-Texts © their authors, published by Dicta under CC BY-SA 4.0 — the same licence applies to the
-files this tool generates, and each one carries the attribution. Frank Ruhl Libre is under the
-SIL OFL 1.1 (`src/assets/fonts/OFL.txt`).
+Texts © their authors. Dicta's are published under CC BY-SA 4.0 — the same licence applies to the
+files this tool generates from them. Sefaria's are licensed per edition, and every export carries
+the licence of the edition it was built from. Frank Ruhl Libre is under the SIL OFL 1.1
+(`src/assets/fonts/OFL.txt`).

@@ -118,9 +118,34 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ---------- filters ---------- */
 
-.sidebar { position: sticky; top: 16px; display: grid; gap: 18px; }
+/* The filters are taller than the viewport once both libraries are in, so the
+   sidebar scrolls on its own rather than making you scroll the whole page to
+   reach the last facet. One scroll region, not one per facet list. */
+.sidebar {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  padding-inline-end: 6px;
+}
 
-@media (width <= 860px) { .sidebar { position: static; } }
+/* Keep the search box reachable no matter how far down the facets you are. */
+.search-box {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--paper);
+  padding-block: 2px;
+}
+
+@media (width <= 860px) {
+  .sidebar { position: static; max-height: none; overflow: visible; padding-inline-end: 0; }
+  .search-box { position: static; }
+}
 
 .facet h3 {
   font-size: 11.5px;
@@ -131,7 +156,7 @@ button, input, select { font: inherit; color: inherit; }
   font-weight: 700;
 }
 
-.facet-list { display: grid; gap: 1px; max-height: 300px; overflow-y: auto; }
+.facet-list { display: grid; gap: 1px; }
 
 .facet-item {
   display: flex;
@@ -146,8 +171,6 @@ button, input, select { font: inherit; color: inherit; }
 .facet-item:hover { background: var(--accent-soft); }
 .facet-item input { accent-color: var(--accent); margin: 0; }
 .facet-item .count { margin-inline-start: auto; color: var(--ink-faint); font-size: 12px; }
-
-.search-box { position: relative; }
 
 .search-box input {
   width: 100%;

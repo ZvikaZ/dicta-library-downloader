@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Reader } from './Reader';
 import { alfeiMenashe } from '../test/fixtures';
 import type { BookDoc } from '../lib/types';
+import { DICTA_ATTRIBUTION } from '../lib/attribution';
 
 const getDoc = vi.hoisted(() => vi.fn());
 vi.mock('../lib/bookCache', () => ({ getDoc, cached: () => undefined }));
@@ -14,6 +15,8 @@ vi.mock('../lib/exporter', () => ({ exportBook }));
 const doc: BookDoc = {
   pageCount: 3,
   fidelity: 'bold',
+  citation: 'דף',
+  attribution: DICTA_ATTRIBUTION,
   blocks: [
     { kind: 'heading', page: 2, spans: [{ text: 'ענין מהות האש', bold: false }] },
     {

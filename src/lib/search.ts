@@ -1,3 +1,4 @@
+import { providerLabel } from './providers/registry';
 import type { Book } from './types';
 
 // Hebrew points/accents, plus the geresh/gershayim variants that otherwise make
@@ -18,17 +19,22 @@ export interface Query {
   text: string;
   categories: string[];
   subcategories: string[];
-  years: [number, number] | null;
+  sources: string[];
 }
 
-export const EMPTY_QUERY: Query = { text: '', categories: [], subcategories: [], years: null };
+export const EMPTY_QUERY: Query = {
+  text: '',
+  categories: [],
+  subcategories: [],
+  sources: [],
+};
 
 export function isActive(q: Query): boolean {
   return (
     q.text.trim() !== '' ||
     q.categories.length > 0 ||
     q.subcategories.length > 0 ||
-    q.years !== null
+    q.sources.length > 0
   );
 }
 
@@ -43,15 +49,12 @@ export function filterBooks(books: Book[], q: Query): Book[] {
   const terms = normalise(q.text).split(' ').filter(Boolean);
   const cats = new Set(q.categories);
   const subs = new Set(q.subcategories);
+  const srcs = new Set(q.sources);
 
   return books.filter((b) => {
     if (cats.size && !cats.has(b.category)) return false;
     if (subs.size && !subs.has(b.subcategory)) return false;
-    if (q.years) {
-      // Books with an unparseable year are excluded once a range is applied.
-      if (b.year === null) return false;
-      if (b.year < q.years[0] || b.year > q.years[1]) return false;
-    }
+    if (srcs.size && !srcs.has(providerLabel(b.provider))) return false;
     return terms.every((t) => b.key.includes(t));
   });
 }
@@ -79,17 +82,15 @@ export function queryToParams(q: Query): URLSearchParams {
   if (q.text.trim()) p.set('q', q.text.trim());
   if (q.categories.length) p.set('cat', q.categories.join('|'));
   if (q.subcategories.length) p.set('sub', q.subcategories.join('|'));
-  if (q.years) p.set('years', q.years.join('-'));
+  if (q.sources.length) p.set('src', q.sources.join('|'));
   return p;
 }
 
 export function paramsToQuery(p: URLSearchParams): Query {
-  const years = p.get('years');
-  const parsed = years?.match(/^(\d{3,4})-(\d{3,4})$/);
   return {
     text: p.get('q') ?? '',
     categories: p.get('cat')?.split('|').filter(Boolean) ?? [],
     subcategories: p.get('sub')?.split('|').filter(Boolean) ?? [],
-    years: parsed ? [Number(parsed[1]), Number(parsed[2])] : null,
+    sources: p.get('src')?.split('|').filter(Boolean) ?? [],
   };
 }

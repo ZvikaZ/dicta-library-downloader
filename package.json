@@ -1,5 +1,5 @@
 {
-  "name": "books",
+  "name": "madaf",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "fetch:books": "node scripts/fetch-books.mjs",
+    "fetch:sefaria": "node scripts/fetch-sefaria.mjs",
     "embed:font": "node scripts/embed-font.mjs",
     "export:book": "node scripts/export-book.mjs"
   },

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { alfeiMenashe, sampleArchive } from '../test/fixtures';
+import { alfeiMenashe, makeDoc, sampleArchive } from '../test/fixtures';
 import { pagesFromZip } from './fetchBook';
 import { buildDoc } from './parseOcr';
 import { buildPdf, directionalRuns, displayWords } from './pdf';
@@ -119,11 +119,9 @@ describe('PDF output', () => {
   });
 
   it('does not choke on a book with no headings', async () => {
-    const bare = {
-      pageCount: 1,
-      fidelity: 'pages' as const,
+    const bare = makeDoc({
       blocks: [{ kind: 'para' as const, page: 1, spans: [{ text: 'טקסט קצר', bold: false }] }],
-    };
+    });
     const out = await buildPdf(alfeiMenashe, bare, fonts);
     expect(new TextDecoder('latin1').decode(out.slice(0, 5))).toBe('%PDF-');
   });
