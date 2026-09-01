@@ -25,3 +25,6 @@ dist-ssr
 
 # Locally generated book exports
 dist-books
+
+# Locally generated OPDS exports and catalog
+public/opds

@@ -40,13 +40,6 @@ function parseIdList() {
   return { set, file };
 }
 
-function outRef(bookId) {
-  const [providerId, local] = String(bookId).split(':');
-  const safeProvider = providerId.replace(/[^a-z0-9_-]/gi, '_');
-  const safeLocal = (local ?? providerId).replace(/[^a-z0-9_-]/gi, '_');
-  return join(safeProvider, safeLocal);
-}
-
 async function loadLib() {
   const entry = join(tmpdir(), `dicta-static-export-${Date.now()}.mjs`);
   await build({
@@ -55,7 +48,7 @@ async function loadLib() {
 export { buildDocx } from './src/lib/docx';
 export { buildPdf } from './src/lib/pdf';
 export { loadBook } from './src/lib/providers';
-export { downloadName } from './src/lib/filename';
+export { downloadName, bookExportDir } from './src/lib/filename';
 export { mergeCatalogues } from './src/lib/catalogue';`,
       resolveDir: process.cwd(),
       sourcefile: 'static-export-entry.ts',
@@ -105,7 +98,7 @@ if (books.length === 0) throw new Error('No books matched filters');
 
 await mkdir(outDir, { recursive: true });
 
-const { buildEpub, buildPdf, buildDocx, loadBook, downloadName } = await loadLib();
+const { buildEpub, buildPdf, buildDocx, loadBook, downloadName, bookExportDir } = await loadLib();
 const pdfFonts = {
   regular: new Uint8Array(await readFile('src/assets/fonts/FrankRuhlLibre-Regular.ttf')),
   bold: new Uint8Array(await readFile('src/assets/fonts/FrankRuhlLibre-Bold.ttf')),
@@ -126,7 +119,7 @@ for (let i = 0; i < books.length; i++) {
       continue;
     }
 
-    const base = outRef(book.id);
+    const base = bookExportDir(book.id);
     const files = {};
     for (const format of formats) {
       const fileName = downloadName(book, format);

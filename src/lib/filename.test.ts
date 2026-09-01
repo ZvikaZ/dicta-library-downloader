@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { alfeiMenashe, makeBook } from '../test/fixtures';
-import { downloadName } from './filename';
+import { bookExportDir, downloadName } from './filename';
 
 describe('download file names', () => {
   it('names files after the Hebrew title, not the internal slug', () => {
@@ -35,5 +35,19 @@ describe('download file names', () => {
     const name = downloadName(makeBook({ id: 'x', title: 'א'.repeat(400) }), 'epub');
     expect(name.length).toBeLessThanOrEqual(130);
     expect(name.endsWith('.epub')).toBe(true);
+  });
+});
+
+describe('export directory names', () => {
+  it('keeps everything after the first colon in the local id', () => {
+    expect(bookExportDir('sefaria:Genesis:1')).toBe('sefaria/Genesis_1');
+  });
+
+  it('matches the old provider/local shape for plain provider:slug ids', () => {
+    expect(bookExportDir('dicta:alfeimenashe')).toBe('dicta/alfeimenashe');
+  });
+
+  it('falls back sanely when there is no colon', () => {
+    expect(bookExportDir('book')).toBe('book/book');
   });
 });
