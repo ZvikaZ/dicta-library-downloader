@@ -1,5 +1,5 @@
 import { combinedLicense, sefariaAttribution } from '../attribution';
-import { buildSefariaDoc, weaveCommentary, type TextNode } from '../sefariaDoc';
+import { buildSefariaDoc, weaveCommentary, HE_SECTION, type TextNode } from '../sefariaDoc';
 import type { BookDoc } from '../types';
 import type { LoadBook } from './types';
 
@@ -173,6 +173,22 @@ async function fetchNode(ref: string, heTitle?: string): Promise<TextNode | null
 }
 
 /**
+ * `HE_SECTION` covers the common section names without a network round trip,
+ * but the library uses many more ("Volume", "Gate", "Drush"...) that would
+ * otherwise show up in a heading untranslated. Whatever a given book's nodes
+ * actually use that isn't already covered gets resolved (and cached) the same
+ * way a `sharedTitle` is, and merged over the static table.
+ */
+async function resolveSectionNames(nodes: TextNode[]): Promise<Record<string, string>> {
+  const unknown = new Set(nodes.flatMap((n) => n.sectionNames).filter((n) => !(n in HE_SECTION)));
+  if (unknown.size === 0) return HE_SECTION;
+  const resolved = await Promise.all([...unknown].map(async (n) => [n, await termHebrew(n)] as const));
+  const merged = { ...HE_SECTION };
+  for (const [name, he] of resolved) if (he) merged[name] = he;
+  return merged;
+}
+
+/**
  * Sefaria serves a "simple" book whole in one request — a few hundred KB, well
  * under a second. Only a complex book costs one request per section, so the
  * cheap path is tried first and the schema is only fetched if it fails.
@@ -250,7 +266,8 @@ async function loadText(ref: string, onProgress?: Parameters<LoadBook>[1]): Prom
   }
 
   onProgress?.('parse', 1);
-  const doc = buildSefariaDoc(nodes, sefariaAttribution(version ?? {}));
+  const sectionNames = await resolveSectionNames(nodes);
+  const doc = buildSefariaDoc(nodes, sefariaAttribution(version ?? {}), sectionNames);
   if (doc.blocks.length === 0) throw new Error('לא נמצא טקסט לספר הזה');
 
   onProgress?.('build', 1);
