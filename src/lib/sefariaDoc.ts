@@ -295,6 +295,7 @@ function walk(
   text: TextNode,
   cur: Cursor,
   numberSections: boolean,
+  sectionNames: Record<string, string>,
 ): void {
   if (!Array.isArray(node)) {
     for (const spans of paragraphs(node)) {
@@ -310,18 +311,19 @@ function walk(
       cur.slot += 1;
       cur.blocks.push({
         kind: 'heading',
-        spans: [{ text: sectionTitle(text, i), bold: false }],
+        spans: [{ text: sectionTitle(text, i, sectionNames), bold: false }],
         page: cur.slot,
         label: labelFor(next, text),
       });
     }
-    walk(child, next, text, cur, numberSections);
+    walk(child, next, text, cur, numberSections, sectionNames);
   });
 }
 
 /** e.g. `פרק ג` — the section name in Hebrew, with its Hebrew number. */
-function sectionTitle(text: TextNode, index: number): string {
-  const name = HE_SECTION[text.sectionNames[0]] ?? text.sectionNames[0] ?? '';
+function sectionTitle(text: TextNode, index: number, sectionNames: Record<string, string>): string {
+  const raw = text.sectionNames[0];
+  const name = sectionNames[raw] ?? raw ?? '';
   return `${name} ${address(text.addressTypes[0] ?? 'Integer', index)}`.trim();
 }
 
@@ -330,7 +332,7 @@ function labelFor(path: number[], text: TextNode): string {
   return path.map((i, depth) => address(text.addressTypes[depth] ?? 'Integer', i)).join(':');
 }
 
-const HE_SECTION: Record<string, string> = {
+export const HE_SECTION: Record<string, string> = {
   Chapter: 'פרק',
   Verse: 'פסוק',
   Daf: 'דף',
@@ -411,7 +413,11 @@ export function weaveCommentary(base: BookDoc, commentary: BookDoc): Block[] {
   return woven;
 }
 
-export function buildSefariaDoc(nodes: TextNode[], attribution: Attribution): BookDoc {
+export function buildSefariaDoc(
+  nodes: TextNode[],
+  attribution: Attribution,
+  sectionNames: Record<string, string> = HE_SECTION,
+): BookDoc {
   const cur: Cursor = { blocks: [], slot: 0 };
 
   for (const node of nodes) {
@@ -431,7 +437,7 @@ export function buildSefariaDoc(nodes: TextNode[], attribution: Attribution): Bo
         // contents being printed twice.
       });
     }
-    walk(node.text, [], node, cur, !named);
+    walk(node.text, [], node, cur, !named, sectionNames);
   }
 
   return {
