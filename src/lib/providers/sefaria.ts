@@ -5,14 +5,30 @@ import type { LoadBook } from './types';
 
 const API = 'https://www.sefaria.org/api';
 
-/** The whole library is served with `Access-Control-Allow-Origin: *`. */
-async function getJson<T>(url: string): Promise<T> {
-  // Cold refs return the odd 504; one retry clears it.
+/**
+ * The whole library is served with `Access-Control-Allow-Origin: *`.
+ *
+ * `label`, when given, names the specific section this call is for (its ref),
+ * so a failure that survives every retry says which part of the book could
+ * not be downloaded rather than just a bare status code.
+ */
+async function getJson<T>(url: string, label?: string): Promise<T> {
+  // Cold refs return the odd 504, and a large complex book fires off a
+  // request per section — with that many round trips, a transient hiccup on
+  // one of them is expected. Three attempts with a growing pause clears most
+  // of that; only a section that is still failing after that is a real error.
+  const attempts = 3;
   for (let attempt = 1; ; attempt++) {
     const res = await fetch(url);
     if (res.ok) return (await res.json()) as T;
-    if (attempt >= 2) throw new Error(`הורדת הספר נכשלה (${res.status})`);
-    await new Promise((r) => setTimeout(r, 500));
+    if (attempt >= attempts) {
+      throw new Error(
+        label
+          ? `הורדת הקטע "${label}" נכשלה אחרי ${attempts} ניסיונות (שגיאה ${res.status})`
+          : `הורדת הספר נכשלה (${res.status})`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, attempt * 800));
   }
 }
 
@@ -60,13 +76,14 @@ function leafRefs(node: SchemaNode, path: string[] = []): { ref: string; heTitle
 async function firstVersion(ref: string) {
   const res = await getJson<TextResponse>(
     `${API}/v3/texts/${encodeURIComponent(ref)}?version=source`,
+    ref,
   );
   return res.versions?.[0];
 }
 
 async function fetchNode(ref: string, heTitle?: string): Promise<TextNode | null> {
   const url = `${API}/v3/texts/${encodeURIComponent(ref)}?version=source`;
-  const res = await getJson<TextResponse>(url);
+  const res = await getJson<TextResponse>(url, ref);
   const version = res.versions?.[0];
   if (!version) return null;
   return {
