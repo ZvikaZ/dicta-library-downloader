@@ -1,9 +1,36 @@
 name: Deploy to GitHub Pages
 
+# Builds the app and the OPDS catalog together and deploys both to the same
+# Pages site — one deployment, no second GitHub Pages site to manage.
+#
+# The OPDS export step is allowed to fail without failing the deploy: it's a
+# network call per book (Dicta/Sefaria), so one flaky download shouldn't be
+# able to block deploying an unrelated app change. On failure, or on a plain
+# push with no exported files, the app still deploys — just without a fresh
+# catalog, keeping whatever public/opds/* happens to exist at that point
+# (nothing, on a from-scratch checkout, since it isn't committed to git).
+#
+# Defaults to a 50-book export on every push, since this runs on *every* push
+# to main. Widen it — or pass --ids for a curated set — via a manual run
+# (Actions tab → this workflow → Run workflow) once you've seen how long and
+# how large a run gets; books-sefaria.json alone has ~2000 entries, and
+# exporting everything would likely blow past GitHub Pages' ~1GB soft size
+# guidance.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      formats:
+        description: 'OPDS export formats (comma-separated: epub,pdf,docx)'
+        default: 'epub,pdf'
+      limit:
+        description: 'Max books to export for the OPDS catalog (0 = no limit — see the warning above)'
+        default: '50'
+      ids:
+        description: 'Optional: comma-separated book ids instead of a limit (e.g. dicta:achiezer,sefaria:Genesis)'
+        default: ''
 
 permissions:
   contents: read
@@ -19,13 +46,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - run: npm ci
+
       - run: npm test
+
+      - name: Export books for the OPDS catalog
+        continue-on-error: true
+        run: |
+          FORMATS="${{ github.event.inputs.formats || 'epub,pdf' }}"
+          LIMIT="${{ github.event.inputs.limit || '50' }}"
+          IDS="${{ github.event.inputs.ids }}"
+          ARGS="--formats=$FORMATS"
+          if [ -n "$IDS" ]; then
+            ARGS="$ARGS --ids=$IDS"
+          elif [ "$LIMIT" != "0" ]; then
+            ARGS="$ARGS --limit=$LIMIT"
+          fi
+          node scripts/export-static.mjs $ARGS
+
+      - name: Build OPDS feeds
+        continue-on-error: true
+        run: node scripts/build-opds.mjs --base-url=https://zvikaz.github.io/dicta-library-downloader/opds/files/
+
+      # vite build copies everything under public/ (including opds/, if the
+      # steps above produced it) into dist/ automatically.
       - run: npm run build
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -39,3 +91,4 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        
