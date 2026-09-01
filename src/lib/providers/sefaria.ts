@@ -72,19 +72,50 @@ function leafRefs(node: SchemaNode, path: string[] = []): { ref: string; heTitle
   return node.nodes.flatMap((child) => leafRefs(child, here));
 }
 
+/**
+ * Fetches one section (leaf) of a complex book, same retry policy as
+ * `getJson` — but a 404 that survives every retry gets a different verdict
+ * than any other status.
+ *
+ * A schema can declare a section (an "Ushpizin" heading, say) that Sefaria
+ * never actually filled in for this particular edition; querying it 404s
+ * every time, retries included, because there is nothing there to eventually
+ * succeed at — not a transient failure, a permanent gap. Skipping only that
+ * section lets the rest of a hundred-plus-section book still open. Any other
+ * status (5xx, a network hiccup) is treated as it always was: retried, and
+ * if it still fails, fatal for the whole book — that kind of failure might
+ * well mean the rest of the download is unreliable too, so it is surfaced
+ * rather than silently dropped.
+ */
+async function fetchSection(ref: string): Promise<TextResponse | null> {
+  const attempts = 3;
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(`${API}/v3/texts/${encodeURIComponent(ref)}?version=source`);
+    if (res.ok) return (await res.json()) as TextResponse;
+    if (attempt >= attempts) {
+      if (res.status === 404) {
+        console.warn(
+          `Sefaria: "${ref}" still 404s after ${attempts} attempts — missing from this edition, skipping`,
+        );
+        return null;
+      }
+      throw new Error(
+        `הורדת הקטע "${ref}" נכשלה אחרי ${attempts} ניסיונות (שגיאה ${res.status})`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, attempt * 800));
+  }
+}
+
 /** A complex book's licence is carried by its sections, not by the book ref. */
 async function firstVersion(ref: string) {
-  const res = await getJson<TextResponse>(
-    `${API}/v3/texts/${encodeURIComponent(ref)}?version=source`,
-    ref,
-  );
-  return res.versions?.[0];
+  const res = await fetchSection(ref);
+  return res?.versions?.[0];
 }
 
 async function fetchNode(ref: string, heTitle?: string): Promise<TextNode | null> {
-  const url = `${API}/v3/texts/${encodeURIComponent(ref)}?version=source`;
-  const res = await getJson<TextResponse>(url, ref);
-  const version = res.versions?.[0];
+  const res = await fetchSection(ref);
+  const version = res?.versions?.[0];
   if (!version) return null;
   return {
     heTitle,
