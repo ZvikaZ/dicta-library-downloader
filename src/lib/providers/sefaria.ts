@@ -67,8 +67,20 @@ interface TextResponse {
  * citation (`Pesach Haggadah, Magid, Ha Lachma Anya`).
  */
 function leafRefs(node: SchemaNode, path: string[] = []): { ref: string; heTitle?: string }[] {
-  const here = [...path, titleIn(node, 'en') ?? node.key ?? ''].filter(Boolean);
-  if (!node.nodes?.length) return [{ ref: here.join(', '), heTitle: titleIn(node, 'he') }];
+  // Most schema nodes carry their own `titles`, but some (the Koren Siddur's
+  // "Ushpizin", "Tefillin"...) instead point at a shared term via
+  // `sharedTitle` and have no inline title of their own; `titleIn` sees
+  // nothing in either language for those. Falling back to the English
+  // key/title keeps the leaf "named" (see buildSefariaDoc's `named`) even
+  // without a Hebrew title — the alternative is a blank heTitle, which makes
+  // the whole leaf look unnamed and floods the reader's contents with a
+  // numbered "פסקה 1", "פסקה 2"... heading per paragraph instead of the one
+  // heading the section actually has.
+  const ownTitle = titleIn(node, 'en') ?? node.key ?? '';
+  const here = [...path, ownTitle].filter(Boolean);
+  if (!node.nodes?.length) {
+    return [{ ref: here.join(', '), heTitle: titleIn(node, 'he') ?? (ownTitle || undefined) }];
+  }
   return node.nodes.flatMap((child) => leafRefs(child, here));
 }
 
