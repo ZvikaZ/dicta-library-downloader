@@ -423,7 +423,12 @@ export function buildSefariaDoc(nodes: TextNode[], attribution: Attribution): Bo
         kind: 'heading',
         spans: [{ text: node.heTitle as string, bold: false }],
         page: cur.slot,
-        label: node.heTitle as string,
+        // No `label`: a named section's title IS its citation — there is no
+        // separate folio or "ג׳:י״ב"-style reference to print alongside it,
+        // unlike a numbered chapter. Leaving it unset falls back to the slot
+        // number (see `blockLabel`) instead of repeating the heading text a
+        // second time, which is what showed up as every entry in the
+        // contents being printed twice.
       });
     }
     walk(node.text, [], node, cur, !named);
