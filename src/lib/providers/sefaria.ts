@@ -37,6 +37,8 @@ interface SchemaNode {
   key?: string;
   /** Titles per language; the raw index carries no flat `title` field. */
   titles?: { lang: string; text: string; primary?: boolean }[];
+  /** A handful of nodes point at a reusable title instead of carrying their own. */
+  sharedTitle?: string;
   nodes?: SchemaNode[];
   depth?: number;
 }
@@ -44,6 +46,29 @@ interface SchemaNode {
 function titleIn(node: SchemaNode, lang: string): string | undefined {
   const titles = node.titles?.filter((t) => t.lang === lang) ?? [];
   return (titles.find((t) => t.primary) ?? titles[0])?.text;
+}
+
+/**
+ * Resolves a `sharedTitle` (e.g. "Ushpizin") to its Hebrew text.
+ *
+ * Sefaria keeps a small set of section titles once, as reusable "terms",
+ * rather than inline on every node that shares one — the node itself carries
+ * only the term's name. One request per distinct term (cached, so a term
+ * used by several sections is only fetched once) beats showing the English
+ * key where every other heading in the book is Hebrew.
+ */
+const termCache = new Map<string, Promise<string | undefined>>();
+
+async function termHebrew(name: string): Promise<string | undefined> {
+  let promise = termCache.get(name);
+  if (!promise) {
+    promise = fetch(`${API}/terms/${encodeURIComponent(name)}`)
+      .then((res) => (res.ok ? (res.json() as Promise<{ titles?: SchemaNode['titles'] }>) : null))
+      .then((term) => titleIn({ titles: term?.titles }, 'he'))
+      .catch(() => undefined);
+    termCache.set(name, promise);
+  }
+  return promise;
 }
 
 interface TextResponse {
@@ -66,22 +91,32 @@ interface TextResponse {
  * titles join with commas to form the ref, exactly as they appear in a
  * citation (`Pesach Haggadah, Magid, Ha Lachma Anya`).
  */
-function leafRefs(node: SchemaNode, path: string[] = []): { ref: string; heTitle?: string }[] {
-  // Most schema nodes carry their own `titles`, but some (the Koren Siddur's
-  // "Ushpizin", "Tefillin"...) instead point at a shared term via
-  // `sharedTitle` and have no inline title of their own; `titleIn` sees
-  // nothing in either language for those. Falling back to the English
-  // key/title keeps the leaf "named" (see buildSefariaDoc's `named`) even
-  // without a Hebrew title — the alternative is a blank heTitle, which makes
-  // the whole leaf look unnamed and floods the reader's contents with a
-  // numbered "פסקה 1", "פסקה 2"... heading per paragraph instead of the one
-  // heading the section actually has.
+async function leafRefs(
+  node: SchemaNode,
+  path: string[] = [],
+): Promise<{ ref: string; heTitle?: string }[]> {
   const ownTitle = titleIn(node, 'en') ?? node.key ?? '';
   const here = [...path, ownTitle].filter(Boolean);
   if (!node.nodes?.length) {
-    return [{ ref: here.join(', '), heTitle: titleIn(node, 'he') ?? (ownTitle || undefined) }];
+    // Most schema nodes carry their own `titles`, but some (the Koren
+    // Siddur's "Ushpizin", "Tefillin"...) instead point at a shared term via
+    // `sharedTitle` and have no inline title of their own; `titleIn` sees
+    // nothing in either language for those, so the term is resolved
+    // separately. Falling all the way back to the English key/title (rather
+    // than leaving heTitle blank) keeps the leaf "named" — see
+    // buildSefariaDoc's `named` — even in the rare case a term fails to
+    // resolve too: a blank heTitle makes the whole leaf look unnamed and
+    // floods the reader's contents with a numbered "פסקה 1", "פסקה 2"...
+    // heading per paragraph instead of the one heading the section actually
+    // has.
+    const heTitle =
+      titleIn(node, 'he') ??
+      (node.sharedTitle ? await termHebrew(node.sharedTitle) : undefined) ??
+      (ownTitle || undefined);
+    return [{ ref: here.join(', '), heTitle }];
   }
-  return node.nodes.flatMap((child) => leafRefs(child, here));
+  const children = await Promise.all(node.nodes.map((child) => leafRefs(child, here)));
+  return children.flat();
 }
 
 /**
@@ -191,7 +226,7 @@ async function loadText(ref: string, onProgress?: Parameters<LoadBook>[1]): Prom
     const index = await getJson<{ schema: SchemaNode }>(
       `${API}/v2/raw/index/${encodeURIComponent(ref)}`,
     );
-    const refs = leafRefs(index.schema);
+    const refs = await leafRefs(index.schema);
     if (refs.length === 0) throw new Error('לא נמצא טקסט לספר הזה');
     version = await firstVersion(refs[0].ref);
 
