@@ -186,6 +186,31 @@ npm run export:book alfeimenashe       # build EPUB + PDF from the CLI, no brows
 python scripts/make-pdf-fonts.py       # regenerate the static TTFs the PDF embeds
 ```
 
+### KOReader via OPDS
+
+KOReader should consume ready-made files (EPUB/PDF) over OPDS, not run this React app.
+
+1. Pre-generate files from the existing pipeline:
+
+```bash
+npm run export:static -- --provider=dicta --formats=epub,pdf --limit=50
+```
+
+This writes files under `public/opds/files/` and a manifest at `public/opds/exports.json`.
+The exporter skips books whose effective licence is not exportable.
+
+2. Build OPDS feeds from `public/books.json`, `public/books-sefaria.json`, and the manifest:
+
+```bash
+npm run build:opds -- --base-url=https://<your-host>/opds/files/
+```
+
+This writes `public/opds/index.xml` plus acquisition feeds (`all*.xml`, `category-*.xml`).
+Point KOReader's OPDS browser to `.../opds/index.xml`.
+
+If OPDS browse/search is ever insufficient, a dedicated KOReader plugin should remain a thin
+catalog/search/download client and still consume these pre-generated files.
+
 `scripts/fetch-books.mjs` normalises the upstream feed: `printYear` arrives as a number for 895
 books and a string for 112, `authorEnglish` is sometimes null, and it precomputes a search key
 with nikud and geresh/gershayim stripped so `אלפי מנשה עה"ת` is findable however you type it.

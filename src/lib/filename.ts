@@ -34,3 +34,17 @@ export function downloadName(book: Book, format: ExportFormat): string {
 
   return `${base}.${EXTENSION[format]}`;
 }
+
+/**
+ * Output directory for one exported book, grouped by provider and a safe local
+ * id. Splits on the first colon only so ids containing extra colons keep their
+ * distinguishing suffix intact.
+ */
+export function bookExportDir(bookId: string): string {
+  const at = String(bookId).indexOf(':');
+  const providerId = at >= 0 ? bookId.slice(0, at) : bookId;
+  const local = at >= 0 ? bookId.slice(at + 1) : bookId;
+  const safeProvider = providerId.replace(/[^a-z0-9_-]/gi, '_');
+  const safeLocal = (local || providerId).replace(/[^a-z0-9_-]/gi, '_');
+  return `${safeProvider}/${safeLocal}`;
+}
