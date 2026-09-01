@@ -285,9 +285,10 @@ interface Cursor {
  * shape. Only the outermost level becomes a heading: below that the numbering
  * is dense enough that a heading per verse would drown the text.
  *
- * `numberSections` is off for a complex book, whose nodes are already named
- * sections — there the outermost level is the paragraphs inside one named
- * section, and numbering them would bury the real headings.
+ * `numberSections` is off for a *flat* named leaf of a complex book — one
+ * whose outermost level already is its paragraphs, where numbering them
+ * would bury the section's one real heading (see the call site in
+ * `buildSefariaDoc`, which is what actually decides this per leaf).
  */
 function walk(
   node: JaggedText,
@@ -437,7 +438,16 @@ export function buildSefariaDoc(
         // contents being printed twice.
       });
     }
-    walk(node.text, [], node, cur, !named, sectionNames);
+    // A named leaf is usually flat (Ushpizin: just paragraphs), where
+    // numbering the outermost level would number every paragraph and drown
+    // the section's one real heading in "פסקה 1", "פסקה 2"... But a named
+    // leaf can itself be multi-level (Orot's "ארץ ישראל" is Chapter then
+    // Paragraph, eight real chapters under that one title) — there the
+    // outermost level is chapters, not paragraphs, and skipping their
+    // numbers collapses the whole section into one undifferentiated block
+    // of text. Only suppress numbering when the leaf is both named and flat.
+    const numberSections = !(named && node.sectionNames.length <= 1);
+    walk(node.text, [], node, cur, numberSections, sectionNames);
   }
 
   return {
